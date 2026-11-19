@@ -339,7 +339,7 @@ jobs:
           docker image save "$IMAGE_TAG" --output "$RUNNER_TEMP/cisco-iol-image.tar"
           echo "image_tag=$IMAGE_TAG" >> "$GITHUB_OUTPUT"
 
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v7
         if: steps.version.outputs.skip != 'true'
         with:
           name: tested-release-image

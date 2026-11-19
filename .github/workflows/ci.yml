@@ -162,7 +162,7 @@ jobs:
           printf '%s\n' "$IMAGE_TAG" > "$RUNNER_TEMP/cisco-iol-image-tag.txt"
           echo "image_tag=$IMAGE_TAG" >> "$GITHUB_OUTPUT"
 
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v7
         if: github.event_name == 'push' && github.ref == 'refs/heads/main'
         with:
           name: tested-beta-image
