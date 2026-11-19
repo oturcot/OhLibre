@@ -41,6 +41,8 @@ concurrency:
   cancel-in-progress: ${{ github.event_name != 'push' }}
 
 jobs:
+  ohdio:
+    uses: ./.github/workflows/test-ohdio.yml
   public-smoke-test:
     if: >-
       github.event_name == 'push' ||
