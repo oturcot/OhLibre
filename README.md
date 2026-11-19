@@ -63,7 +63,29 @@ OHDIO_LIVE_TEST=1 python3 -m unittest discover -s tests -v
 
 Les tests hors réseau utilisent des sons générés. Les tests réseau vérifient
 les six émissions et décodent un court extrait de leurs segments sans
-conserver l'audio. Le job OHdio de la CI utilise un runner GitHub hébergé.
-Les anciens jobs Cisco et workflows de publication copiés ne sont pas
-encore remplacés : ne pas les utiliser pour publier ce projet. Aucun secret
-n'est nécessaire pour lancer le conteneur ou les tests OHdio.
+conserver l'audio. GitHub Actions exécute ces tests sur les PR, après
+fusion vers `main` ou `stable`, et avant les releases. Les PR construisent
+et rechargent aussi les deux archives Docker, sans les publier en release.
+Tous ces jobs utilisent des runners GitHub hébergés.
+
+## Installer depuis une release privée
+
+Les commits sur `main` qui passent les tests produisent une bêta. Une
+release stable est créée après les tests sur un tag `X.Y.Z`, ou depuis
+**Actions → Release → Run workflow** sur `main` ou `stable`, avec une version
+`X.Y.Z`. La publication se fait uniquement dans les releases du dépôt privé,
+via le `GITHUB_TOKEN` fourni par GitHub Actions, sans registre.
+
+Depuis la même release, télécharge `compose.yml`, `SHA256SUMS` et l'archive
+correspondant à ta machine : `radio-canada-podcast-linux-amd64.tar.gz` pour
+Intel/AMD, ou `radio-canada-podcast-linux-arm64.tar.gz` pour ARM (dont les
+Mac Apple Silicon). Place les fichiers dans le même dossier, puis :
+
+```sh
+# Exemple pour ARM : remplace arm64 par amd64 sur une machine Intel/AMD.
+grep -E ' (radio-canada-podcast-linux-arm64.tar.gz|compose.yml)$' SHA256SUMS | shasum -c
+docker image load -i radio-canada-podcast-linux-arm64.tar.gz
+docker compose up -d
+```
+
+Le Compose de la release utilise uniquement l'image chargée localement.
