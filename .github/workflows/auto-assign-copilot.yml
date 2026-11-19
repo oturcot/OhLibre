@@ -1,0 +1,30 @@
+name: Auto Assign Issues to Copilot
+
+on:
+  issues:
+    types:
+      - opened
+
+permissions:
+  issues: write
+
+jobs:
+  assign:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Assign Copilot
+        if: github.event.issue.user.login == 'oturcot'
+        env:
+          GH_TOKEN: ${{ secrets.ISSUE_BOT_TOKEN }}
+        run: |
+          gh issue edit ${{ github.event.issue.number }} --repo "$GITHUB_REPOSITORY" \
+            --add-assignee "@copilot"
+
+      - name: Assign issue to repository owner
+        if: github.event.issue.user.login != 'oturcot'
+        env:
+          GH_TOKEN: ${{ secrets.ISSUE_BOT_TOKEN }}
+        run: |
+          gh issue edit ${{ github.event.issue.number }} --repo "$GITHUB_REPOSITORY" \
+            --add-assignee "oturcot"

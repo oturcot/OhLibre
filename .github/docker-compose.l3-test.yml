@@ -1,0 +1,62 @@
+services:
+  cisco-router:
+    image: ${IOL_IMAGE_TAG:?IOL_IMAGE_TAG must be set}
+    platform: linux/amd64
+    hostname: cisco-router
+    restart: "no"
+    environment:
+      APP_ID: 1
+      SKIP_NAT: "true"
+    networks:
+      management:
+        interface_name: lan0
+      network-a:
+        interface_name: eth0
+      network-b:
+        interface_name: wan0
+    privileged: true
+    cap_add:
+      - NET_ADMIN
+      - NET_RAW
+
+  alpine-client-a:
+    image: alpine:3.22
+    command:
+      - sh
+      - -c
+      - apk add --no-cache iproute2 iputils >/dev/null && touch /tmp/client-ready && exec sleep infinity
+    networks:
+      - network-a
+    cap_add:
+      - NET_ADMIN
+    healthcheck:
+      test: ["CMD-SHELL", "test -f /tmp/client-ready"]
+      interval: 2s
+      timeout: 1s
+      retries: 30
+
+  alpine-client-b:
+    image: alpine:3.22
+    command:
+      - sh
+      - -c
+      - apk add --no-cache iproute2 iputils >/dev/null && touch /tmp/client-ready && exec sleep infinity
+    networks:
+      - network-b
+    cap_add:
+      - NET_ADMIN
+    healthcheck:
+      test: ["CMD-SHELL", "test -f /tmp/client-ready"]
+      interval: 2s
+      timeout: 1s
+      retries: 30
+
+networks:
+  management:
+    driver: bridge
+  network-a:
+    external: true
+    name: ${L3_NETWORK_A:?L3_NETWORK_A must be set}
+  network-b:
+    external: true
+    name: ${L3_NETWORK_B:?L3_NETWORK_B must be set}

@@ -1,0 +1,226 @@
+name: Report CI status
+
+on:
+  workflow_run:
+    workflows:
+      - CI
+    types:
+      - requested
+      - in_progress
+      - completed
+
+concurrency:
+  group: report-ci-status-${{ github.event.workflow_run.head_sha }}
+  cancel-in-progress: false
+
+permissions:
+  actions: read
+  pull-requests: read
+  statuses: write
+
+jobs:
+  report:
+    if: >-
+      github.event.workflow_run.event == 'pull_request' ||
+      github.event.workflow_run.event == 'pull_request_review'
+    runs-on: ubuntu-latest
+    steps:
+      - name: Publish gated test status
+        uses: actions/github-script@v9
+        with:
+          script: |
+            const run = context.payload.workflow_run;
+            let associatedPr = run.pull_requests?.find(
+              pullRequest => pullRequest.head?.sha === run.head_sha
+            );
+            if (!associatedPr) {
+              const associatedPrs = await github.paginate(
+                github.rest.repos.listPullRequestsAssociatedWithCommit,
+                {
+                  owner: context.repo.owner,
+                  repo: context.repo.repo,
+                  commit_sha: run.head_sha,
+                  per_page: 100,
+                }
+              );
+              associatedPr = associatedPrs.find(pullRequest =>
+                pullRequest.head?.sha === run.head_sha &&
+                pullRequest.head.ref === run.head_branch &&
+                (!run.head_repository?.full_name ||
+                  pullRequest.head.repo?.full_name === run.head_repository.full_name)
+              );
+            }
+            if (!associatedPr) {
+              core.info("No pull request is associated with this run.");
+              return;
+            }
+            const headSha = run.head_sha;
+
+            const { data: pullRequest } = await github.rest.pulls.get({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              pull_number: associatedPr.number,
+            });
+            if (pullRequest.head.sha !== headSha) {
+              core.info("The run is for an outdated pull request commit.");
+              return;
+            }
+
+            const isAutomatedPr =
+              pullRequest.head.repo?.full_name === context.payload.repository.full_name &&
+              [
+                "automation/update-container-dependencies",
+                "automation/promote-dependency-release",
+              ].includes(pullRequest.head.ref);
+            const isTrustedPullRequest =
+              pullRequest.user.login === context.payload.repository.owner.login ||
+              pullRequest.user.login === "dependabot[bot]" ||
+              isAutomatedPr;
+
+            if (run.event === "pull_request_review") {
+              const reviews = await github.paginate(github.rest.pulls.listReviews, {
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                pull_number: associatedPr.number,
+                per_page: 100,
+              });
+              const latestOwnerReview = reviews
+                .filter(review =>
+                  review.user?.login === context.payload.repository.owner.login &&
+                  review.state !== "COMMENTED"
+                )
+                .at(-1);
+              if (
+                latestOwnerReview?.state !== "APPROVED" ||
+                latestOwnerReview.commit_id !== headSha
+              ) {
+                core.info("No current owner approval authorizes this test run.");
+                return;
+              }
+            } else if (!isTrustedPullRequest) {
+              core.info("This pull request must be owner-approved before tests report.");
+              return;
+            }
+
+            const testJobNames = new Set([
+              "public-smoke-test",
+              "local-cisco-integration-test",
+            ]);
+            const jobsByRun = new Map();
+            async function getAttemptJobs(candidateRun) {
+              const key = `${candidateRun.id}-${candidateRun.run_attempt}`;
+              if (!jobsByRun.has(key)) {
+                const { data } =
+                  await github.rest.actions.listJobsForWorkflowRunAttempt({
+                    owner: context.repo.owner,
+                    repo: context.repo.repo,
+                    run_id: candidateRun.id,
+                    attempt_number: candidateRun.run_attempt,
+                    per_page: 100,
+                  });
+                jobsByRun.set(key, data.jobs);
+              }
+              return jobsByRun.get(key);
+            }
+            function hasEligibleTests(jobs) {
+              return jobs.some(job => {
+                if (
+                  testJobNames.has(job.name) &&
+                  (job.status !== "completed" || job.conclusion !== "skipped")
+                ) {
+                  return true;
+                }
+                return job.name === "CI test outcome" &&
+                  job.status === "completed" &&
+                  job.steps?.some(step =>
+                    step.name === "Report the gated test results" &&
+                    ["success", "failure"].includes(step.conclusion)
+                  );
+              });
+            }
+            if (!hasEligibleTests(await getAttemptJobs(run))) {
+              core.info("This run did not start eligible gated tests.");
+              return;
+            }
+
+            const { data: workflowRuns } = await github.rest.actions.listWorkflowRuns({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              workflow_id: run.workflow_id,
+              head_sha: headSha,
+              per_page: 100,
+            });
+            const candidateRuns = workflowRuns.workflow_runs
+              .filter(candidate =>
+                candidate.event === "pull_request" ||
+                candidate.event === "pull_request_review"
+              )
+              .filter(candidate => {
+                if (candidate.id === run.id) {
+                  return true;
+                }
+                const associatedPrs = candidate.pull_requests ?? [];
+                if (associatedPrs.length) {
+                  return associatedPrs.some(
+                    candidatePr => candidatePr.number === associatedPr.number
+                  );
+                }
+                return candidate.head_branch === pullRequest.head.ref &&
+                  (!candidate.head_repository?.full_name ||
+                    candidate.head_repository.full_name ===
+                      pullRequest.head.repo?.full_name);
+              })
+              .sort((left, right) =>
+                right.run_number - left.run_number ||
+                right.run_attempt - left.run_attempt
+              );
+            let latestRun;
+            for (const candidate of candidateRuns) {
+              if (hasEligibleTests(await getAttemptJobs(candidate))) {
+                latestRun = candidate;
+                break;
+              }
+            }
+            if (
+              !latestRun ||
+              latestRun.id !== run.id ||
+              latestRun.run_attempt !== run.run_attempt
+            ) {
+              core.info("A newer CI run or attempt superseded this status report.");
+              return;
+            }
+
+            const targetUrl = `${run.html_url}/attempts/${run.run_attempt}`;
+            if (context.payload.action !== "completed") {
+              if (latestRun.status === "completed") {
+                core.info("The latest eligible CI run has already completed.");
+                return;
+              }
+              await github.rest.repos.createCommitStatus({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                sha: headSha,
+                state: "pending",
+                context: "CI / gated tests",
+                description: "Gated tests are running",
+                target_url: targetUrl,
+              });
+              return;
+            }
+
+            const jobs = await getAttemptJobs(run);
+            const outcomeJob = jobs.find(job => job.name === "CI test outcome");
+            const outcomeStep = outcomeJob?.steps?.find(
+              step => step.name === "Report the gated test results"
+            );
+            const state = outcomeStep?.conclusion === "success" ? "success" : "failure";
+
+            await github.rest.repos.createCommitStatus({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              sha: headSha,
+              state,
+              context: "CI / gated tests",
+              description: `Gated tests ${state}`,
+              target_url: targetUrl,
+            });
