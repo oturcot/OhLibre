@@ -24,3 +24,4 @@ jobs:
     uses: ./.github/workflows/publish-ohdio.yml
     permissions:
       contents: write
+      packages: write

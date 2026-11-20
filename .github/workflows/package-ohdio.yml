@@ -35,6 +35,11 @@ jobs:
             docker-compose.yml > release-compose.yml
           docker compose -f release-compose.yml config -q
           docker compose -f release-compose.yml run --rm --no-deps ohdio --help
+          bash .github/scripts/registry-compose.sh release-compose.yml "${GITHUB_REPOSITORY_OWNER,,}" > registry-compose.yml
+          docker compose -f registry-compose.yml config --format json | jq -e \
+            --arg image "ghcr.io/${GITHUB_REPOSITORY_OWNER,,}/radio-canada-podcast:latest" \
+            '.services.ohdio | .image == $image and .pull_policy == "always" and
+             .build == null and any(.volumes[]; .type == "bind" and .target == "/podcasts")'
       - uses: actions/upload-artifact@v7
         with:
           name: ohdio-linux-${{ matrix.arch }}
