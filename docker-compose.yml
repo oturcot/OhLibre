@@ -7,5 +7,5 @@ services:
       OHDIO_OUTPUT: /podcasts
     volumes:
       - type: bind
-        source: ${PODCAST_DIR:-./podcasts}
+        source: ./podcasts # Remplacer par le dossier de la bibliothèque sur l'hôte.
         target: /podcasts
