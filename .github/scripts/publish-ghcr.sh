@@ -4,8 +4,10 @@ set -euo pipefail
 image="$1"
 version="$2"
 archives="$3"
+current_channel_version="${4:-}"
 [[ "$image" =~ ^ghcr\.io/[a-z0-9][a-z0-9-]*/radio-canada-podcast$ ]]
 [[ "$version" =~ ^[0-9]+\.[0-9]+\.[0-9]+(-beta\.[0-9]+)?$ ]]
+[[ -z "$current_channel_version" || "$current_channel_version" =~ ^[0-9]+\.[0-9]+\.[0-9]+(-beta\.[0-9]+)?$ ]]
 repository="${image#ghcr.io/}"
 
 reply="$(mktemp)"
@@ -38,6 +40,19 @@ channel=latest
 if [[ "$version" == *-beta.* ]]; then
     channel=beta
 fi
-docker buildx imagetools create --tag "$image:$version" --tag "$image:$channel" "${sources[@]}"
+tags=("$image:$version")
+if [[ -z "$current_channel_version" ]] || {
+    [[ "$current_channel_version" != "$version" ]] &&
+    [[ "$(printf '%s\n%s\n' "$current_channel_version" "$version" | sort -V | tail -n 1)" == "$version" ]]
+}; then
+    tags+=("$image:$channel")
+else
+    echo "Keeping $channel at version $current_channel_version; not moving it to $version."
+fi
+tag_args=()
+for tag in "${tags[@]}"; do
+    tag_args+=(--tag "$tag")
+done
+docker buildx imagetools create "${tag_args[@]}" "${sources[@]}"
 docker buildx imagetools inspect --raw "$image:$version" | jq -e \
     '[.manifests[].platform | select(.os == "linux") | .architecture] | sort == ["amd64","arm64"]'

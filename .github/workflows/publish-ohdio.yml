@@ -64,8 +64,12 @@ jobs:
             fi
             flags+=(--verify-tag)
           fi
-          if gh release view "$tag" --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1; then
-            echo "Release $tag already exists; no files were replaced."
+          if release_draft="$(gh release view "$tag" --repo "$GITHUB_REPOSITORY" --json isDraft --jq .isDraft 2>/dev/null)"; then
+            if [[ "$release_draft" == true ]]; then
+              echo "Release $tag is still a draft; GHCR publication will validate and finalize it."
+            else
+              echo "Release $tag is already published; no files were replaced."
+            fi
             exit 0
           fi
           sed -e '/^    build: /d' -e 's/    pull_policy: build/    pull_policy: never/' \
@@ -75,7 +79,7 @@ jobs:
             "${GITHUB_REPOSITORY_OWNER,,}" > release-assets/docker-compose.ghcr.yml
           (cd release-assets && sha256sum docker-compose.ghcr.yml >> SHA256SUMS)
           gh release create "$tag" release-assets/* --repo "$GITHUB_REPOSITORY" \
-            --target "$GITHUB_SHA" --title "$tag" --generate-notes "${flags[@]}"
+            --target "$GITHUB_SHA" --title "$tag" --generate-notes --draft "${flags[@]}"
   ghcr:
     if: github.event.repository.private
     needs: release
@@ -109,5 +113,35 @@ jobs:
           set -euo pipefail
           [[ "$(gh api "repos/$GITHUB_REPOSITORY" --jq .private)" == true ]]
           echo "$GH_TOKEN" | docker login ghcr.io -u "$GITHUB_ACTOR" --password-stdin
+          channel=latest
+          pattern='^[0-9]+\.[0-9]+\.[0-9]+$'
+          if [[ "$VERSION" == *-beta.* ]]; then
+            channel=beta
+            pattern='^[0-9]+\.[0-9]+\.[0-9]+-beta\.[0-9]+$'
+          fi
+          releases="$(gh api --paginate "repos/$GITHUB_REPOSITORY/releases?per_page=100" \
+            --jq '.[] | select(.draft == false) | .tag_name')"
+          current_channel_version="$(printf '%s\n' "$releases" | grep -E "$pattern" | sort -V | tail -n 1 || true)"
           bash .github/scripts/publish-ghcr.sh \
-            "ghcr.io/${GITHUB_REPOSITORY_OWNER,,}/radio-canada-podcast" "$VERSION" release-assets
+            "ghcr.io/${GITHUB_REPOSITORY_OWNER,,}/radio-canada-podcast" "$VERSION" \
+            release-assets "$current_channel_version"
+  publish:
+    if: github.event.repository.private
+    needs: [release, ghcr]
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    permissions:
+      contents: write
+    steps:
+      - name: Publish the release after GHCR succeeds
+        env:
+          GH_TOKEN: ${{ github.token }}
+          VERSION: ${{ needs.release.outputs.version }}
+        run: |
+          set -euo pipefail
+          release="$(gh api "repos/$GITHUB_REPOSITORY/releases/tags/$VERSION")"
+          if [[ "$(jq -r .draft <<< "$release")" == true ]]; then
+            release_id="$(jq -r .id <<< "$release")"
+            gh api --method PATCH "repos/$GITHUB_REPOSITORY/releases/$release_id" \
+              -F draft=false >/dev/null
+          fi
