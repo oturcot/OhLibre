@@ -76,6 +76,11 @@ release stable est créée après les tests sur un tag `X.Y.Z`, ou depuis
 `X.Y.Z`. La publication se fait uniquement dans les releases du dépôt privé,
 via le `GITHUB_TOKEN` fourni par GitHub Actions, sans registre.
 
+Si une relance trouve une release déjà publiée avec ses quatre fichiers, elle
+réussit sans rien remplacer. Si elle trouve un brouillon ou des fichiers
+manquants ou dont l’envoi n’est pas terminé, elle échoue en indiquant le problème,
+sans modifier la release.
+
 Depuis la même release, télécharge `compose.yml`, `SHA256SUMS` et l'archive
 correspondant à ta machine : `radio-canada-podcast-linux-amd64.tar.gz` pour
 Intel/AMD, ou `radio-canada-podcast-linux-arm64.tar.gz` pour ARM (dont les
