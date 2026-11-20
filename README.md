@@ -50,8 +50,13 @@ manqués pendant un arrêt prolongé.
 
 Le fichier `AAAA-MM-JJ_titre de l'épisode.mp3` est visible dès le premier
 segment. Les caractères incompatibles avec les noms de fichiers sont retirés
-du nom; le titre dans les métadonnées reste celui d'OHdio. Les anciens noms
-ne sont pas modifiés.
+du nom; le titre dans les métadonnées reste celui d'OHdio. Pour chaque nouvel
+épisode publié, le conteneur vérifie son titre toutes les 15 minutes pendant
+six heures, même après un redémarrage. Si OHdio le modifie, le fichier et son
+titre ID3 sont mis à jour sans retélécharger les segments. Aucun indicateur
+fiable de titre définitif n'étant disponible, le suivi continue pendant les six
+heures même après un changement. Les anciens épisodes déjà indexés avant cette
+fonction ne sont pas surveillés.
 FFmpeg assemble les segments dans l'ordre annoncé par OHdio et remplace ce
 même fichier sans exposer de fichier en cours d'écriture. Le serveur doit
 rescanner le fichier pour voir sa nouvelle durée; un fichier déjà téléchargé
