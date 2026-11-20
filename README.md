@@ -1,4 +1,4 @@
-# Radio-Canada Podcast
+# OhLibre
 
 Télécharge dans une bibliothèque locale les épisodes disponibles sur les pages
 publiques d'OHdio. Aucune application Radio-Canada ni connexion à un compte n'est
@@ -15,9 +15,9 @@ docker compose up -d
 docker compose logs -f ohdio
 ```
 
-Ce Compose utilise `ghcr.io/oturcot/radio-canada-podcast:latest` et ne
+Ce Compose utilise `ghcr.io/oturcot/ohlibre:latest` et ne
 construit pas d'image locale. Pour tester une modification du code, construis
-l'image avec `docker build -t radio-canada-podcast:local .`.
+l'image avec `docker build -t ohlibre:local .`.
 
 Le dossier de stockage par défaut est **`./podcasts`**, à côté de
 [`docker-compose.yml`](./docker-compose.yml), détecté sans option `-f`.
@@ -154,14 +154,14 @@ en charge ces protections. Lors de la première installation, promouvoir ce
 workflow sur `stable` avant de compter sur les promotions automatiques.
 
 Depuis la même release, télécharge `compose.yml`, `SHA256SUMS` et l'archive
-correspondant à ta machine : `radio-canada-podcast-linux-amd64.tar.gz` pour
-Intel/AMD, ou `radio-canada-podcast-linux-arm64.tar.gz` pour ARM (dont les
+correspondant à ta machine : `ohlibre-linux-amd64.tar.gz` pour
+Intel/AMD, ou `ohlibre-linux-arm64.tar.gz` pour ARM (dont les
 Mac Apple Silicon). Place les fichiers dans le même dossier, puis :
 
 ```sh
 # Exemple pour ARM : remplace arm64 par amd64 sur une machine Intel/AMD.
-grep -E ' (radio-canada-podcast-linux-arm64.tar.gz|compose.yml)$' SHA256SUMS | shasum -c
-docker image load -i radio-canada-podcast-linux-arm64.tar.gz
+grep -E ' (ohlibre-linux-arm64.tar.gz|compose.yml)$' SHA256SUMS | shasum -c
+docker image load -i ohlibre-linux-arm64.tar.gz
 docker compose up -d
 ```
 
@@ -169,7 +169,7 @@ Le Compose de la release utilise uniquement l'image chargée localement.
 
 ## Mettre à jour depuis GHCR privé
 
-GitHub Actions publie `ghcr.io/oturcot/radio-canada-podcast` sans secret
+GitHub Actions publie `ghcr.io/oturcot/ohlibre` sans secret
 supplémentaire côté CI. Utilise `latest` pour les stables, `beta` pour les
 bêtas de `main`, ou un numéro de version pour rester sur cette version.
 `latest` n'existe pas avant la première release stable. Le paquet doit rester

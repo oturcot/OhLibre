@@ -34,26 +34,26 @@ jobs:
         run: |
           set -euo pipefail
           docker buildx build --pull --platform "linux/$ARCH" --load \
-            -t radio-canada-podcast:local .
-          archive="radio-canada-podcast-linux-$ARCH.tar.gz"
-          docker image save radio-canada-podcast:local | gzip -c > "$archive"
-          docker image rm radio-canada-podcast:local
+            -t ohlibre:local .
+          archive="ohlibre-linux-$ARCH.tar.gz"
+          docker image save ohlibre:local | gzip -c > "$archive"
+          docker image rm ohlibre:local
           docker image load -i "$archive"
           docker run --rm -e OHDIO_LIVE_TEST=1 \
             -v "$PWD/tests:/app/tests:ro" --entrypoint python \
-            radio-canada-podcast:local -m unittest discover -s tests -v
+            ohlibre:local -m unittest discover -s tests -v
           bash .github/scripts/local-compose.sh docker-compose.yml > release-compose.yml
           docker compose -f release-compose.yml config -q
           docker compose -f release-compose.yml run --rm --no-deps ohdio --help
           bash .github/scripts/registry-compose.sh release-compose.yml "${GITHUB_REPOSITORY_OWNER,,}" > registry-compose.yml
           docker compose -f registry-compose.yml config --format json | jq -e \
-            --arg image "ghcr.io/${GITHUB_REPOSITORY_OWNER,,}/radio-canada-podcast:latest" \
+            --arg image "ghcr.io/${GITHUB_REPOSITORY_OWNER,,}/ohlibre:latest" \
             '.services.ohdio | .image == $image and .pull_policy == "always" and
              .build == null and any(.volumes[]; .type == "bind" and .target == "/podcasts")'
       - uses: actions/upload-artifact@v7
         with:
           name: ohdio-linux-${{ matrix.arch }}
-          path: radio-canada-podcast-linux-${{ matrix.arch }}.tar.gz
+          path: ohlibre-linux-${{ matrix.arch }}.tar.gz
           if-no-files-found: error
           compression-level: 0
           retention-days: 7
@@ -62,5 +62,5 @@ jobs:
           ARCH: ${{ matrix.arch }}
         run: |
           bash .github/scripts/stamp-image-version.sh 0.0.0-beta.0 "$ARCH"
-          docker run --rm --entrypoint python radio-canada-podcast:local \
+          docker run --rm --entrypoint python ohlibre:local \
             -c 'import os; assert os.environ["OHDIO_VERSION"] == "0.0.0-beta.0"'

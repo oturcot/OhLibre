@@ -5,7 +5,7 @@ image="$1"
 version="$2"
 archives="$3"
 current_channel_version="${4:-}"
-[[ "$image" =~ ^ghcr\.io/[a-z0-9][a-z0-9-]*/radio-canada-podcast$ ]]
+[[ "$image" =~ ^ghcr\.io/[a-z0-9][a-z0-9-]*/ohlibre$ ]]
 [[ "$version" =~ ^[0-9]+\.[0-9]+\.[0-9]+(-beta\.[0-9]+)?$ ]]
 [[ -z "$current_channel_version" || "$current_channel_version" =~ ^[0-9]+\.[0-9]+\.[0-9]+(-beta\.[0-9]+)?$ ]]
 repository="${image#ghcr.io/}"
@@ -28,12 +28,12 @@ esac
 
 sources=()
 for arch in amd64 arm64; do
-    docker image load --platform "linux/$arch" -i "$archives/radio-canada-podcast-linux-$arch.tar.gz"
+    docker image load --platform "linux/$arch" -i "$archives/ohlibre-linux-$arch.tar.gz"
     tagged="$image:$version-$arch"
-    docker image tag radio-canada-podcast:local "$tagged"
+    docker image tag ohlibre:local "$tagged"
     docker image push --platform "linux/$arch" "$tagged"
     sources+=("$tagged")
-    docker image rm "$tagged" radio-canada-podcast:local
+    docker image rm "$tagged" ohlibre:local
 done
 
 channel=latest

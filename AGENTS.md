@@ -1,4 +1,4 @@
-# Radio-Canada Podcast
+# OhLibre
 
 - Ce dépôt privé récupère les épisodes OHdio accessibles sans authentification. Ne pas contourner les restrictions d'accès. L'ancien projet et le crontab servent uniquement de référence.
 - Configurer les émissions (`6056`, `12879`, `3858`, `302`, `3855`, `52`) et le chemin hôte dans Docker Compose. Un clone doit fonctionner avec `docker compose up`.
