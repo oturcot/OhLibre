@@ -21,7 +21,7 @@ permissions:
 jobs:
   release:
     runs-on: ubuntu-latest
-    timeout-minutes: 15
+    timeout-minutes: 30
     permissions:
       actions: read
       contents: write
@@ -42,6 +42,23 @@ jobs:
           path: release-assets
           run-id: ${{ inputs.run_id }}
           github-token: ${{ github.token }}
+      - name: Record the release version in the tested images
+        env:
+          VERSION: ${{ inputs.version }}
+        run: |
+          set -euo pipefail
+          if [[ -f .github/scripts/stamp-image-version.sh ]]; then
+            for arch in amd64 arm64; do
+              archive="release-assets/radio-canada-podcast-linux-$arch.tar.gz"
+              docker image load --platform "linux/$arch" -i "$archive"
+              bash .github/scripts/stamp-image-version.sh "$VERSION" "$arch"
+              docker image save radio-canada-podcast:local | gzip -c > "$archive.tmp"
+              mv "$archive.tmp" "$archive"
+              docker image rm radio-canada-podcast:local
+            done
+          else
+            echo "::warning::Legacy commit has no startup version support; publishing its original tested images."
+          fi
       - name: Publish to the private GitHub repository
         id: publish
         env:
