@@ -14,6 +14,9 @@ docker compose up -d
 docker compose logs -f ohdio
 ```
 
+Les journaux indiquent les vérifications, les téléchargements de segments
+et la publication des épisodes, ainsi que les erreurs ou indisponibilités.
+
 Le dossier de stockage par défaut est **`./podcasts`**, à côté de
 [`docker-compose.yml`](./docker-compose.yml), détecté sans option `-f`.
 Pour le modifier, change `volumes.source` dans le Compose ou crée un fichier

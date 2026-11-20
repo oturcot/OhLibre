@@ -97,6 +97,7 @@ def run(show: str, root: Path, stop: Event, once: bool) -> None:
         next_check = schedule.next_start(now) if schedule else next_balado(now)
         if startup or active or schedule is None:
             try:
+                logging.info("Vérification de l'émission %s", show)
                 items = discover(show, schedule.radio if schedule else False)
                 if schedule and slot:
                     episode = select_scheduled(items, schedule, slot.date())
