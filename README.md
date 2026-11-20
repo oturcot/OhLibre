@@ -5,10 +5,9 @@ Il ne fournit pas de serveur de balados.
 
 ## Avec Docker Compose
 
-Dans [`docker-compose.yml`](docker-compose.yml), remplace
-`your-dockerhub-username` par le compte Docker Hub qui publie OhLibre.
-Modifie `volumes.source` pour choisir le dossier de ta bibliothèque et
-`OHDIO_SHOWS` pour choisir les numéros d'émissions.
+Dans [`docker-compose.yml`](docker-compose.yml), modifie `volumes.source`
+pour choisir le dossier de ta bibliothèque et `OHDIO_SHOWS` pour choisir
+les numéros d'émissions. Le Compose utilise `oturcot/ohlibre:latest`.
 
 ```sh
 docker compose up -d
@@ -20,14 +19,14 @@ Le dossier par défaut est `./podcasts`. Conserve son sous-dossier caché
 
 ## Avec Docker
 
-Remplace le nom du compte et le chemin hôte par tes valeurs :
+Remplace le chemin hôte par le chemin de ta bibliothèque :
 
 ```sh
 docker run -d --name ohlibre --restart unless-stopped \
   -e OHDIO_SHOWS=6056,12879,3858,302,3855,52 \
   -e OHDIO_OUTPUT=/podcasts \
   --mount type=bind,source=/chemin/vers/podcasts,target=/podcasts \
-  your-dockerhub-username/ohlibre:latest
+  oturcot/ohlibre:latest
 docker logs -f ohlibre
 ```
 
