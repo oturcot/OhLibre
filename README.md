@@ -14,8 +14,10 @@ docker compose up -d
 docker compose logs -f ohdio
 ```
 
-Le dossier de stockage par défaut est `./podcasts`, à côté de `compose.yml`.
-Pour le modifier, crée un fichier `.env` dans ce même dossier avec
+Le dossier de stockage par défaut est **`./podcasts`**, à côté de
+[`docker-compose.yml`](./docker-compose.yml), détecté sans option `-f`.
+Pour le modifier, change `volumes.source` dans le Compose ou crée un fichier
+`.env` à côté avec
 `PODCAST_DIR=/chemin/vers/Podcasts`. Le conteneur y accède sous `/podcasts`. Il
 crée un sous-dossier par numéro d'émission; configure le serveur pour lire les
 MP3, pas le dossier caché `.ohdio`. Conserve ce dossier caché lors des
@@ -74,6 +76,11 @@ release stable est créée après les tests sur un tag `X.Y.Z`, ou depuis
 **Actions → Release → Run workflow** sur `main` ou `stable`, avec une version
 `X.Y.Z`. La publication se fait uniquement dans les releases du dépôt privé,
 via le `GITHUB_TOKEN` fourni par GitHub Actions, sans registre.
+
+Si une relance trouve une release déjà publiée avec ses quatre fichiers, elle
+réussit sans rien remplacer. Si elle trouve un brouillon ou des fichiers
+manquants ou dont l’envoi n’est pas terminé, elle échoue en indiquant le problème,
+sans modifier la release.
 
 Depuis la même release, télécharge `compose.yml`, `SHA256SUMS` et l'archive
 correspondant à ta machine : `radio-canada-podcast-linux-amd64.tar.gz` pour

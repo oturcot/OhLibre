@@ -60,12 +60,27 @@ jobs:
             fi
             flags+=(--verify-tag)
           fi
-          if gh release view "$tag" --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1; then
-            echo "Release $tag already exists; no files were replaced."
+          images=(radio-canada-podcast-linux-{amd64,arm64}.tar.gz)
+          assets=("${images[@]}" compose.yml SHA256SUMS)
+          release="$(gh api --paginate "repos/$GITHUB_REPOSITORY/releases?per_page=100" \
+            --jq ".[] | select(.tag_name == \"$tag\") | {draft, assets}")"
+          if [[ -n "$release" ]]; then
+            problems="$(jq -r '
+              . as $release |
+              (if .draft != false then "release is still a draft" else empty end),
+              ($ARGS.positional[] as $name |
+                if any($release.assets[]; .name == $name and .state == "uploaded")
+                then empty else "\($name): missing or not uploaded" end)
+            ' --args "${assets[@]}" <<< "$release")"
+            if [[ -n "$problems" ]]; then
+              printf 'Release %s is incomplete; no files were changed:\n%s\n' "$tag" "$problems" >&2
+              exit 1
+            fi
+            echo "Release $tag is published with all expected files; no files were replaced."
             exit 0
           fi
           sed -e '/^    build: /d' -e 's/    pull_policy: build/    pull_policy: never/' \
-            compose.yml > release-assets/compose.yml
-          (cd release-assets && sha256sum radio-canada-podcast-linux-{amd64,arm64}.tar.gz compose.yml > SHA256SUMS)
-          gh release create "$tag" release-assets/* --repo "$GITHUB_REPOSITORY" \
+            docker-compose.yml > release-assets/compose.yml
+          (cd release-assets && sha256sum "${images[@]}" compose.yml > SHA256SUMS)
+          gh release create "$tag" "${assets[@]/#/release-assets/}" --repo "$GITHUB_REPOSITORY" \
             --target "$GITHUB_SHA" --title "$tag" --generate-notes "${flags[@]}"
