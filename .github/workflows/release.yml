@@ -1,27 +1,103 @@
 name: Release
 
 on:
-  push:
-    tags: ['[0-9]+.[0-9]+.[0-9]+']
+  pull_request:
+    branches: [stable]
+    types: [closed]
   workflow_dispatch:
     inputs:
-      version:
-        description: 'Version stable X.Y.Z'
+      release_type:
+        description: Version component
         required: true
+        type: choice
+        options: [patch, minor, major, custom]
+        default: patch
+      release_version:
+        description: Exact X.Y.Z for custom releases
         type: string
+        required: false
 
 permissions:
-  contents: read
+  actions: read
+  contents: write
+  packages: write
+
+concurrency:
+  group: stable-release
+  cancel-in-progress: false
+  queue: max
 
 jobs:
-  ohdio:
-    if: github.ref_type == 'tag' || github.ref == 'refs/heads/main' || github.ref == 'refs/heads/stable'
+  test:
+    if: >-
+      (github.event_name == 'workflow_dispatch' && github.ref == 'refs/heads/stable') ||
+      (github.event_name == 'pull_request' && github.event.pull_request.merged == true &&
+       github.event.pull_request.head.repo.full_name == github.repository &&
+       (github.event.pull_request.head.ref == 'main' ||
+        (github.event.pull_request.head.ref == 'automation/promote-dependency-release' &&
+         contains(github.event.pull_request.labels.*.name, 'dependencies'))))
     uses: ./.github/workflows/test-ohdio.yml
-  stable:
-    needs: ohdio
-    uses: ./.github/workflows/publish-ohdio.yml
-    permissions:
-      contents: write
-      packages: write
     with:
-      version: ${{ inputs.version || github.ref_name }}
+      ref: ${{ github.event.pull_request.merge_commit_sha || github.sha }}
+  archives:
+    needs: test
+    uses: ./.github/workflows/package-ohdio.yml
+    with:
+      ref: ${{ github.event.pull_request.merge_commit_sha || github.sha }}
+  version:
+    needs: [test, archives]
+    runs-on: ubuntu-latest
+    outputs:
+      version: ${{ steps.version.outputs.version }}
+      sha: ${{ steps.version.outputs.sha }}
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          ref: ${{ github.event.pull_request.merge_commit_sha || github.sha }}
+          fetch-depth: 0
+          persist-credentials: false
+      - id: version
+        env:
+          GH_TOKEN: ${{ secrets.RELEASE_BOT_TOKEN }}
+          TARGET_SHA: ${{ github.event.pull_request.merge_commit_sha || github.sha }}
+          EVENT: ${{ github.event_name }}
+          HEAD: ${{ github.event.pull_request.head.ref }}
+          RELEASE_TYPE: ${{ inputs.release_type || 'patch' }}
+          RELEASE_VERSION: ${{ inputs.release_version }}
+        run: |
+          set -euo pipefail
+          [[ "$TARGET_SHA" =~ ^[0-9a-f]{40}$ ]]
+          git merge-base --is-ancestor "$TARGET_SHA" origin/stable
+          latest="$(git tag --list --sort=-v:refname | grep -E '^[0-9]+\.[0-9]+\.[0-9]+$' | head -n 1 || true)"
+          version="$(git tag --points-at "$TARGET_SHA" --list --sort=-v:refname | grep -E '^[0-9]+\.[0-9]+\.[0-9]+$' | head -n 1 || true)"
+          if [[ -z "$version" ]]; then
+            if [[ -n "$latest" ]] && git merge-base --is-ancestor "$TARGET_SHA" "$latest"; then
+              echo "The target is already included in stable release $latest."
+              exit 0
+            fi
+            if [[ -n "$latest" ]] && ! git merge-base --is-ancestor "$latest" "$TARGET_SHA"; then
+              echo "Latest stable release is not in the target history." >&2
+              exit 1
+            fi
+            mode="$RELEASE_TYPE"
+            if [[ "$EVENT" == pull_request ]]; then
+              mode=patch
+              [[ "$HEAD" == main ]] && mode=promotion
+            fi
+            if [[ "$mode" != custom && -n "$RELEASE_VERSION" ]]; then
+              echo "release_version is only valid for custom releases." >&2
+              exit 1
+            fi
+            version="$(bash .github/scripts/release-version.sh "$mode" "$(tr -d '[:space:]' < .github/NEXT_VERSION)" "$latest" "$RELEASE_VERSION")"
+            gh api --method POST "repos/$GITHUB_REPOSITORY/git/refs" -f "ref=refs/tags/$version" -f "sha=$TARGET_SHA"
+          fi
+          echo "version=$version" >> "$GITHUB_OUTPUT"
+          echo "sha=$TARGET_SHA" >> "$GITHUB_OUTPUT"
+  publish:
+    needs: version
+    if: needs.version.outputs.version != ''
+    uses: ./.github/workflows/publish-ohdio.yml
+    with:
+      version: ${{ needs.version.outputs.version }}
+      ref: ${{ needs.version.outputs.sha }}
+      run_id: ${{ github.run_id }}

@@ -1,0 +1,68 @@
+name: Report CI status
+
+on:
+  workflow_run:
+    workflows: [CI]
+    types: [requested, in_progress, completed]
+
+permissions:
+  actions: read
+  pull-requests: read
+  statuses: write
+
+concurrency:
+  group: report-ci-${{ github.event.workflow_run.head_sha }}
+  cancel-in-progress: false
+  queue: max
+
+jobs:
+  report:
+    if: github.event.workflow_run.event == 'pull_request' || github.event.workflow_run.event == 'pull_request_review'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/github-script@v9
+        with:
+          script: |
+            const run = context.payload.workflow_run;
+            const { owner, repo } = context.repo;
+            const prs = await github.paginate(github.rest.repos.listPullRequestsAssociatedWithCommit, {
+              owner, repo, commit_sha: run.head_sha, per_page: 100
+            });
+            const pr = prs.find(p => p.state === "open" && p.head.sha === run.head_sha &&
+              p.head.ref === run.head_branch &&
+              (!run.head_repository?.full_name || p.head.repo?.full_name === run.head_repository.full_name));
+            if (!pr) return;
+            const trusted = pr.user.login === owner ||
+              (pr.head.repo?.full_name === `${owner}/${repo}` &&
+                (pr.user.login === "dependabot[bot]" ||
+                 ["automation/update-python-image", "automation/promote-dependency-release"].includes(pr.head.ref)));
+            if (!trusted) {
+              if (run.event !== "pull_request_review") return;
+              const reviews = await github.paginate(github.rest.pulls.listReviews, {
+                owner, repo, pull_number: pr.number, per_page: 100
+              });
+              const review = reviews.filter(r => r.user?.login === owner && r.state !== "COMMENTED").at(-1);
+              if (review?.state !== "APPROVED" || review.commit_id !== run.head_sha) return;
+            }
+            const candidates = await github.paginate(github.rest.actions.listWorkflowRuns, {
+              owner, repo, workflow_id: run.workflow_id, head_sha: run.head_sha, per_page: 100
+            });
+            const runs = candidates.filter(r =>
+              (r.event === "pull_request" || r.event === "pull_request_review") &&
+              (trusted || r.event === "pull_request_review") &&
+              r.head_branch === pr.head.ref &&
+              (!r.head_repository?.full_name || r.head_repository.full_name === pr.head.repo?.full_name)
+            ).sort((a, b) => b.run_number - a.run_number || b.run_attempt - a.run_attempt);
+            if (!runs.length || runs[0].id !== run.id || runs[0].run_attempt !== run.run_attempt) return;
+            let state = "pending";
+            if (context.payload.action === "completed") {
+              const { data } = await github.rest.actions.listJobsForWorkflowRunAttempt({
+                owner, repo, run_id: run.id, attempt_number: run.run_attempt, per_page: 100
+              });
+              const gate = data.jobs.find(j => j.name === "Gated tests");
+              state = run.conclusion === "success" && gate?.conclusion === "success" ? "success" : "failure";
+            }
+            await github.rest.repos.createCommitStatus({
+              owner, repo, sha: run.head_sha, state, context: "CI / gated tests",
+              description: `Gated tests ${state}`, target_url: `${run.html_url}/attempts/${run.run_attempt}`
+            });

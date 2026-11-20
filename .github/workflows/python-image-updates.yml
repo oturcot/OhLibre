@@ -1,0 +1,39 @@
+name: Update Python image
+
+on:
+  schedule:
+    - cron: '21 5 * * *'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: update-python-image
+  cancel-in-progress: false
+
+jobs:
+  update:
+    if: github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          ref: main
+          persist-credentials: false
+      - name: Record the current official image digest
+        run: |
+          set -euo pipefail
+          digest="$(docker buildx imagetools inspect python:latest --format '{{json .Manifest.Digest}}' | jq -r .)"
+          [[ "$digest" =~ ^sha256:[0-9a-f]{64}$ ]]
+          printf '%s\n' "$digest" > .github/python-image-digest
+      - uses: peter-evans/create-pull-request@3ffccacd46053766916f087ce41d627c0b8cf2d1
+        with:
+          token: ${{ secrets.RELEASE_BOT_TOKEN }}
+          branch: automation/update-python-image
+          delete-branch: true
+          base: main
+          commit-message: "chore: update official Python image"
+          title: "Update official Python image"
+          body: "Refresh the official Python image after CI verifies both architectures."
+          labels: dependencies
