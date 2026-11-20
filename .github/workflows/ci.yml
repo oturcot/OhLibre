@@ -59,6 +59,7 @@ jobs:
     uses: ./.github/workflows/package-ohdio.yml
     with:
       ref: ${{ github.event.review.commit_id || github.event.pull_request.head.sha || github.sha }}
+      upload-artifacts: ${{ github.event_name != 'pull_request' && github.event_name != 'pull_request_review' && github.event_name != 'merge_group' }}
   gate:
     name: Gated tests
     if: always() && needs.authorize.outputs.allowed == 'true'
