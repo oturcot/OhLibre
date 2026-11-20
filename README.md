@@ -123,13 +123,13 @@ version custom supérieure à la dernière stable. La première release manuelle
 patch est `0.1.0`. Pour `minor` et `major`, `NEXT_VERSION` doit indiquer la
 nouvelle ligne, respectivement `X.Y.0` ou `X.0.0`.
 
-L'image de base officielle `python:latest` est volontairement flottante.
-Un contrôle quotidien détecte son nouveau digest et ouvre une PR; Dependabot
-suit aussi les actions GitHub. Après les tests, les PR automatiques sont
-fusionnées dans `main`, puis leurs seuls changements de dépendances sont
-proposés à `stable`, retestés et publiés en nouvelle version patch. Les PR
-manuelles ne sont jamais fusionnées automatiquement. Une mise à jour de
-`python:latest` peut inclure une nouvelle version majeure de Python.
+L'image de base officielle `python:3.13-slim` utilise une variante allégée et
+reste sur Python 3.13. Un contrôle quotidien détecte les changements de son
+digest et ouvre une PR; Dependabot suit aussi les actions GitHub. Après les
+tests, les PR automatiques sont fusionnées dans `main`, puis leurs seuls
+changements de dépendances sont proposés à `stable`, retestés et publiés en
+nouvelle version patch. Les PR manuelles ne sont jamais fusionnées
+automatiquement.
 
 Les images publiées proviennent des archives testées : à la publication, leur
 configuration reçoit le numéro de release, sans reconstruire l'application.

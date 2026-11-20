@@ -24,7 +24,7 @@ jobs:
       - name: Record the current official image digest
         run: |
           set -euo pipefail
-          digest="$(docker buildx imagetools inspect python:latest --format '{{json .Manifest.Digest}}' | jq -r .)"
+          digest="$(docker buildx imagetools inspect python:3.13-slim --format '{{json .Manifest.Digest}}' | jq -r .)"
           [[ "$digest" =~ ^sha256:[0-9a-f]{64}$ ]]
           printf '%s\n' "$digest" > .github/python-image-digest
       - uses: peter-evans/create-pull-request@3ffccacd46053766916f087ce41d627c0b8cf2d1
