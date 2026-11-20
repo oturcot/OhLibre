@@ -14,8 +14,9 @@ docker compose up -d
 docker compose logs -f ohdio
 ```
 
-Le dossier de stockage est `/Users/oturcot/mnt/Docker_mac_data/Docker/Plex/media/Podcasts/`
-sur la machine qui exécute Docker. Le conteneur y accède sous `/podcasts`. Il
+Le dossier de stockage par défaut est `./podcasts`, à côté de `compose.yml`.
+Pour le modifier, crée un fichier `.env` dans ce même dossier avec
+`PODCAST_DIR=/chemin/vers/Podcasts`. Le conteneur y accède sous `/podcasts`. Il
 crée un sous-dossier par numéro d'émission; configure le serveur pour lire les
 MP3, pas le dossier caché `.ohdio`. Conserve ce dossier caché lors des
 migrations : il contient l'index des épisodes et les segments en attente.
