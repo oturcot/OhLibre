@@ -31,7 +31,7 @@ docker() {
 export -f curl docker
 
 export MOCK_CHANNEL=error
-if bash "$script" ghcr.io/example/radio-canada-podcast 0.1.0 /unused 2>/dev/null; then
+if bash "$script" ghcr.io/example/ohlibre 0.1.0 /unused 2>/dev/null; then
   echo "Registry failures must not be treated as a missing channel." >&2
   exit 1
 fi
@@ -42,6 +42,6 @@ fi
 
 : > "$MOCK_LOG"
 export MOCK_CHANNEL=missing
-bash "$script" ghcr.io/example/radio-canada-podcast 0.1.0 /unused >/dev/null
-grep -q -- '--tag ghcr.io/example/radio-canada-podcast:latest' "$MOCK_LOG"
+bash "$script" ghcr.io/example/ohlibre 0.1.0 /unused >/dev/null
+grep -q -- '--tag ghcr.io/example/ohlibre:latest' "$MOCK_LOG"
 echo "GHCR publication tests passed."

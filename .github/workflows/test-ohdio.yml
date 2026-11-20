@@ -44,8 +44,8 @@ jobs:
           ref: ${{ inputs.ref || github.sha }}
           persist-credentials: false
       - run: |
-          docker build --pull -t radio-canada-podcast:local .
-          docker run --rm --entrypoint python radio-canada-podcast:local -c \
+          docker build --pull -t ohlibre:local .
+          docker run --rm --entrypoint python ohlibre:local -c \
             'from datetime import datetime, timezone; winter = datetime(2026, 1, 1, 12, tzinfo=timezone.utc).astimezone(); summer = datetime(2026, 7, 1, 12, tzinfo=timezone.utc).astimezone(); assert (winter.hour, summer.hour) == (7, 8), (winter, summer)'
       - name: Verify the writable host bind mount
         run: |

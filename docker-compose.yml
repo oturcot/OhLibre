@@ -1,6 +1,6 @@
 services:
   ohdio:
-    image: ghcr.io/oturcot/radio-canada-podcast:latest
+    image: ghcr.io/oturcot/ohlibre:latest
     restart: unless-stopped
     environment:
       OHDIO_SHOWS: "6056,12879,3858,302,3855,52"

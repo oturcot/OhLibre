@@ -1,4 +1,4 @@
-# Radio-Canada Podcast
+# OhLibre
 
 Suivre les instructions du projet dans [AGENTS.md](../AGENTS.md).
 Exécuter les tests applicatifs OHdio sur les PR, sans créer de conteneur.

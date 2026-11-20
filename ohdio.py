@@ -27,7 +27,7 @@ def plain(value: str | None) -> str:
 
 
 def read(url: str) -> str:
-    request = Request(url, headers={"User-Agent": "Radio-Canada-Podcast/1.0"})
+    request = Request(url, headers={"User-Agent": "OhLibre/1.0"})
     with urlopen(request, timeout=20) as response:
         return response.read().decode("utf-8")
 
