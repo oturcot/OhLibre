@@ -80,7 +80,7 @@ jobs:
             exit 0
           fi
           sed -e '/^    build: /d' -e 's/    pull_policy: build/    pull_policy: never/' \
-            compose.yml > release-assets/compose.yml
+            docker-compose.yml > release-assets/compose.yml
           (cd release-assets && sha256sum "${images[@]}" compose.yml > SHA256SUMS)
           gh release create "$tag" "${assets[@]/#/release-assets/}" --repo "$GITHUB_REPOSITORY" \
             --target "$GITHUB_SHA" --title "$tag" --generate-notes "${flags[@]}"

@@ -15,7 +15,7 @@ docker compose logs -f ohdio
 ```
 
 Le dossier de stockage par défaut est **`./podcasts`**, à côté de
-[`compose.yml`](./compose.yml). Pour le modifier, change `volumes.source` dans
+[`docker-compose.yml`](./docker-compose.yml), détecté sans option `-f`. Pour le modifier, change `volumes.source` dans
 le Compose ou crée un fichier `.env` avec `PODCAST_DIR=/chemin/vers/Podcasts`.
 Le conteneur y accède sous `/podcasts`. Il crée un sous-dossier par numéro
 d'émission; configure le serveur pour lire les MP3, pas le dossier caché
