@@ -23,12 +23,10 @@ jobs:
       - name: Verify the writable host bind mount
         run: |
           mount_root="$(mktemp -d "$PWD/.bind-test.XXXXXX")"
-          podcast_dir="$mount_root/podcast library"
-          override_file="$mount_root/compose.override.yml"
-          trap 'rm -f "$podcast_dir/from-host" "$podcast_dir/from-container" "$override_file"; rmdir "$podcast_dir" "$mount_root"' EXIT
-          mkdir -p "$podcast_dir"
-          printf 'services:\n  ohdio:\n    volumes:\n      - type: bind\n        source: "%s"\n        target: /podcasts\n' "$podcast_dir" > "$override_file"
-          printf 'host\n' > "$podcast_dir/from-host"
-          docker compose -f docker-compose.yml -f "$override_file" run --rm --no-deps --entrypoint sh ohdio \
+          export PODCAST_DIR="$mount_root/podcast library"
+          trap 'rm -f "$PODCAST_DIR/from-host" "$PODCAST_DIR/from-container"; rmdir "$PODCAST_DIR" "$mount_root"' EXIT
+          mkdir -p "$PODCAST_DIR"
+          printf 'host\n' > "$PODCAST_DIR/from-host"
+          docker compose run --rm --no-deps --entrypoint sh ohdio \
             -ec 'test "$(cat /podcasts/from-host)" = host; printf "container\n" > /podcasts/from-container'
-          test "$(cat "$podcast_dir/from-container")" = container
+          test "$(cat "$PODCAST_DIR/from-container")" = container
