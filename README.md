@@ -7,15 +7,14 @@ serveur existant pour lire le dossier de stockage.
 
 ## Démarrer depuis le dépôt
 
-Remplace `your-dockerhub-username` dans le Compose par le nom du compte Docker
-Hub qui publie l'image, puis lance la version stable dans le dossier du projet :
+Lance la version stable dans le dossier du projet :
 
 ```sh
 docker compose up -d
 docker compose logs -f ohdio
 ```
 
-Ce Compose utilise `your-dockerhub-username/ohlibre:latest` et ne
+Ce Compose utilise `oturcot/ohlibre:latest` et ne
 construit pas d'image locale. Pour tester une modification du code, construis
 l'image avec `docker build -t ohlibre:local .`.
 
