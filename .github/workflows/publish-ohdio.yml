@@ -92,11 +92,15 @@ jobs:
       - uses: actions/checkout@v7
         with:
           persist-credentials: false
-      - uses: actions/download-artifact@v8
-        with:
-          pattern: ohdio-linux-*
-          merge-multiple: true
-          path: release-assets
+      - name: Download the published release assets
+        env:
+          GH_TOKEN: ${{ github.token }}
+          VERSION: ${{ needs.release.outputs.version }}
+        run: |
+          set -euo pipefail
+          mkdir -p release-assets
+          gh release download "$VERSION" --repo "$GITHUB_REPOSITORY" --dir release-assets
+          (cd release-assets && sha256sum --check SHA256SUMS)
       - name: Push the tested images to private GHCR
         env:
           GH_TOKEN: ${{ github.token }}
