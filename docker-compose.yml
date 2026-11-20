@@ -1,9 +1,6 @@
 services:
   ohdio:
-    image: radio-canada-podcast:local
-    build: .
-    pull_policy: build
-    init: true
+    image: ghcr.io/oturcot/radio-canada-podcast:latest
     restart: unless-stopped
     environment:
       OHDIO_SHOWS: "6056,12879,3858,302,3855,52"

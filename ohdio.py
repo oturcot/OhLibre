@@ -41,6 +41,7 @@ class Episode:
     last_aired: datetime
     replay: bool
     media: tuple[str, ...]
+    show_title: str
 
 
 def episodes(html: str, show_id: str) -> list[Episode]:
@@ -55,6 +56,9 @@ def episodes(html: str, show_id: str) -> list[Episode]:
     else:
         raise ValueError(f"{show_id}: page d'émission OHdio introuvable")
 
+    show_title = plain(data["program"]["title"])
+    if not show_title:
+        raise ValueError(f"{show_id}: nom d'émission OHdio absent")
     result = []
     for item in data["episodes"]:
         episode_id = str(item["globalId"]["id"])
@@ -66,7 +70,7 @@ def episodes(html: str, show_id: str) -> list[Episode]:
         if aired.tzinfo is None or last.tzinfo is None:
             raise ValueError(f"{show_id}: horaire OHdio sans fuseau")
         result.append(Episode(episode_id, plain(item["title"]), plain(item["summary"]), aired,
-                              last, item["isBroadcastedReplay"], media))
+                              last, item["isBroadcastedReplay"], media, show_title))
     return result
 
 

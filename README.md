@@ -7,21 +7,26 @@ serveur existant pour lire le dossier de stockage.
 
 ## Démarrer depuis le dépôt
 
-Dans le dossier du projet :
+Connecte Docker au paquet GHCR privé comme indiqué plus bas, puis lance la
+version stable dans le dossier du projet :
 
 ```sh
 docker compose up -d
 docker compose logs -f ohdio
 ```
 
+Ce Compose utilise `ghcr.io/oturcot/radio-canada-podcast:latest` et ne
+construit pas d'image locale. Pour tester une modification du code, construis
+l'image avec `docker build -t radio-canada-podcast:local .`.
+
 Le dossier de stockage par défaut est **`./podcasts`**, à côté de
 [`docker-compose.yml`](./docker-compose.yml), détecté sans option `-f`.
 Pour le modifier, change `volumes.source` dans le Compose ou crée un fichier
 `.env` avec `PODCAST_DIR=/chemin/vers/Podcasts`. Le conteneur y accède sous
-`/podcasts`. Il crée un sous-dossier par numéro d'émission; configure le
+`/podcasts`. Il crée un sous-dossier portant le nom de l'émission; configure le
 serveur pour lire les MP3, pas le dossier caché `.ohdio`. Conserve ce dossier
-caché lors des migrations : il contient l'index des épisodes et les segments
-en attente.
+caché : il contient l'index des épisodes et les segments en attente. Les
+fichiers existants ne sont ni copiés ni déplacés.
 
 | ID dans `OHDIO_SHOWS` | Émission | Première vérification (heure de Toronto) |
 | --- | --- | --- |
@@ -43,7 +48,15 @@ ou au plus tard à minuit. Au démarrage, le conteneur vérifie aussi le dernier
 créneau passé. Il ne fait pas de rattrapage systématique de tous les créneaux
 manqués pendant un arrêt prolongé.
 
-Le fichier `<date>-<identifiant>.mp3` est visible dès le premier segment.
+Le fichier `AAAA-MM-JJ_titre de l'épisode.mp3` est visible dès le premier
+segment. Les caractères incompatibles avec les noms de fichiers sont retirés
+du nom; le titre dans les métadonnées reste celui d'OHdio. Pour chaque nouvel
+épisode publié, le conteneur vérifie son titre toutes les 15 minutes pendant
+six heures, même après un redémarrage. Si OHdio le modifie, le fichier et son
+titre ID3 sont mis à jour sans retélécharger les segments. Aucun indicateur
+fiable de titre définitif n'étant disponible, le suivi continue pendant les six
+heures même après un changement. Les anciens épisodes déjà indexés avant cette
+fonction ne sont pas surveillés.
 FFmpeg assemble les segments dans l'ordre annoncé par OHdio et remplace ce
 même fichier sans exposer de fichier en cours d'écriture. Le serveur doit
 rescanner le fichier pour voir sa nouvelle durée; un fichier déjà téléchargé
@@ -68,6 +81,9 @@ sur l'hôte lorsque le conteneur est recréé; ne supprime pas le sous-dossier
 caché `.ohdio`, qui sert à la déduplication et à la reprise.
 
 ## Tester
+
+`docker compose logs -f ohdio` affiche les vérifications, téléchargements,
+publications et erreurs du script.
 
 Avec Python 3.13+ et FFmpeg (dont `ffprobe`) :
 
@@ -115,8 +131,11 @@ proposés à `stable`, retestés et publiés en nouvelle version patch. Les PR
 manuelles ne sont jamais fusionnées automatiquement. Une mise à jour de
 `python:latest` peut inclure une nouvelle version majeure de Python.
 
-Les images publiées proviennent des archives testées, sans reconstruction
-après la CI. Le workflow reprend les brouillons incomplets; une release déjà
+Les images publiées proviennent des archives testées : à la publication, leur
+configuration reçoit le numéro de release, sans reconstruire l'application.
+Au démarrage, le journal indique cette version; une image construite
+localement indique `développement`.
+Le workflow reprend les brouillons incomplets; une release déjà
 publiée ne voit pas ses fichiers remplacés. Les releases sont finalisées
 après publication dans GHCR privé. Configurer `RELEASE_BOT_TOKEN` avec accès
 en écriture au contenu, aux PR, aux Actions et aux workflows; `GITHUB_TOKEN`

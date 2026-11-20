@@ -10,7 +10,7 @@ from unittest.mock import patch
 from urllib.error import URLError
 
 from downloader import SCHEDULES, TORONTO, next_balado, select_scheduled, sync_balado
-from library import Library, ffmpeg
+from library import Library, episode_filename, ffmpeg
 from ohdio import discover, episodes, manifest
 
 
@@ -20,7 +20,7 @@ def fixture(show: str, aired: datetime, media: list[int]) -> str:
         "broadcastedLastTimeAt": aired.isoformat(), "isBroadcastedReplay": False,
         "mediaIds": media, "title": "Épisode complet&nbsp;: test", "summary": "<p>Résumé</p>",
     }
-    data = {"typename": "ProgramPage", "program": {"globalId": {"id": show}}, "episodes": [record]}
+    data = {"typename": "ProgramPage", "program": {"globalId": {"id": show}, "title": f"Émission {show}"}, "episodes": [record]}
     return "<script>window._rcState_ = " + json.dumps({"pages": {"pages": {"/": {"data": data}}}}) + ";</script>"
 
 
@@ -31,6 +31,63 @@ def probe(path: Path) -> dict:
 
 
 class DownloadTest(unittest.TestCase):
+    def test_long_episode_title_fits_filesystem_limit(self) -> None:
+        for title in ("a" * 300, "é" * 200):
+            filename = episode_filename("2026-11-16", title)
+            self.assertLessEqual(len(filename.encode("utf-8")), 255)
+            self.assertLessEqual(len(f".{Path(filename).stem}.tmp".encode("utf-8")), 255)
+            self.assertTrue(filename.startswith("2026-11-16_"))
+            self.assertTrue(filename.endswith(".mp3"))
+
+    def test_reuses_existing_unicode_show_directory_without_moving_old_files(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            library = Library(root, "302")
+            old = root / "302" / "2026-11-16-305.mp3"
+            old.parent.mkdir()
+            old.write_bytes(b"existing audio")
+            existing = root / "A\u0300 la une"
+            existing.mkdir()
+            library.set_show_title("À la une")
+            self.assertEqual(library.output, existing)
+            self.assertEqual(old.read_bytes(), b"existing audio")
+
+    def test_existing_unindexed_episode_is_not_overwritten(self) -> None:
+        aired = datetime(2026, 11, 16, tzinfo=TORONTO)
+        episode, = episodes(fixture("302", aired, [101]), "302")
+        with tempfile.TemporaryDirectory() as directory:
+            library = Library(Path(directory), "302")
+            output = Path(directory) / "Émission 302" / "2026-11-16_Épisode complet test.mp3"
+            output.parent.mkdir()
+            output.write_bytes(b"other")
+            with self.assertRaises(FileExistsError):
+                library.publish(episode, "2026-11-16", "05:30", 1)
+            self.assertEqual(output.read_bytes(), b"other")
+
+    def test_title_filename_preserves_original_id3_title(self) -> None:
+        aired = datetime(2026, 11, 16, tzinfo=TORONTO)
+        episode, = episodes(fixture("302", aired, [101]), "302")
+        episode = replace(episode, title="Une histoire : de A à Z / suite")
+        with tempfile.TemporaryDirectory() as directory:
+            library = Library(Path(directory), "302")
+
+            def fake_fetch(media_id: str, path: Path) -> bool:
+                ffmpeg("-f", "lavfi", "-i", "sine=frequency=431", "-t", "1",
+                       "-ac", "2", "-ar", "44100", "-b:a", "128k",
+                       "-write_xing", "0", str(path))
+                return True
+
+            with patch("library.fetch", side_effect=fake_fetch):
+                self.assertTrue(library.publish(episode, "2026-11-16", "05:30", 1))
+            output, = library.output.glob("*.mp3")
+            self.assertEqual(output.name, "2026-11-16_Une histoire de A à Z suite.mp3")
+            self.assertEqual(probe(output)["tags"]["title"], episode.title)
+            with patch("library.fetch") as fetch:
+                self.assertTrue(library.publish(replace(episode, title="Titre modifié"),
+                                                "2026-11-16", "05:30", 1))
+                fetch.assert_not_called()
+            self.assertEqual(list(library.output.glob("*.mp3")), [output])
+
     def test_first_segment_is_published_before_fetching_the_second(self) -> None:
         show = "3858"
         schedule = SCHEDULES[show]

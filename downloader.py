@@ -95,8 +95,12 @@ def run(show: str, root: Path, stop: Event, once: bool) -> None:
         slot = schedule.latest_start(now) if schedule else None
         active = slot is not None and slot.date() == now.date()
         next_check = schedule.next_start(now) if schedule else next_balado(now)
-        if startup or active or schedule is None:
+        title_check = library.next_title_check(now)
+        title_due = title_check is not None and title_check <= now
+        if startup or active or schedule is None or title_due:
+            items = None
             try:
+                logging.info("Vérification de l'émission %s", show)
                 items = discover(show, schedule.radio if schedule else False)
                 if schedule and slot:
                     episode = select_scheduled(items, schedule, slot.date())
@@ -111,9 +115,13 @@ def run(show: str, root: Path, stop: Event, once: bool) -> None:
                     raise
                 logging.warning("Émission %s : %s", show, error)
                 complete = False
+            library.refresh_titles(items, datetime.now(TORONTO))
             if active and not complete:
                 midnight = datetime.combine(now.date() + timedelta(days=1), time(), TORONTO)
                 next_check = min(next_check, midnight, now + FIVE_MINUTES, key=datetime.timestamp)
+        title_check = library.next_title_check(datetime.now(TORONTO))
+        if title_check is not None:
+            next_check = min(next_check, title_check, key=datetime.timestamp)
         if once:
             return
         startup = False
@@ -140,6 +148,8 @@ def main() -> None:
             fcntl.flock(lock, fcntl.LOCK_EX | fcntl.LOCK_NB)
         except BlockingIOError:
             parser.exit(1, f"Un autre téléchargeur utilise déjà {root}\n")
+        logging.info("Démarrage du téléchargeur OHdio — version %s",
+                     os.environ.get("OHDIO_VERSION", "développement"))
         with ThreadPoolExecutor(max_workers=len(shows)) as workers:
             futures = [workers.submit(run, show, root, stop, args.once) for show in shows]
             try:
