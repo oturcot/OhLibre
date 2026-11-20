@@ -20,7 +20,7 @@ def fixture(show: str, aired: datetime, media: list[int]) -> str:
         "broadcastedLastTimeAt": aired.isoformat(), "isBroadcastedReplay": False,
         "mediaIds": media, "title": "Épisode complet&nbsp;: test", "summary": "<p>Résumé</p>",
     }
-    data = {"typename": "ProgramPage", "program": {"globalId": {"id": show}}, "episodes": [record]}
+    data = {"typename": "ProgramPage", "program": {"globalId": {"id": show}, "title": f"Émission {show}"}, "episodes": [record]}
     return "<script>window._rcState_ = " + json.dumps({"pages": {"pages": {"/": {"data": data}}}}) + ";</script>"
 
 
@@ -31,6 +31,61 @@ def probe(path: Path) -> dict:
 
 
 class DownloadTest(unittest.TestCase):
+    def test_existing_indexed_episode_moves_to_named_unicode_directory(self) -> None:
+        aired = datetime(2026, 11, 16, tzinfo=TORONTO)
+        episode, = episodes(fixture("302", aired, [101]), "302")
+        episode = replace(episode, show_title="À la une")
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            library = Library(root, "302")
+            library.state["entries"][episode.id] = {
+                "date": "2026-11-16", "media": ["101"], "complete": True,
+            }
+            library.save()
+            old = root / "302" / "2026-11-16-305.mp3"
+            old.parent.mkdir()
+            old.write_bytes(b"existing audio")
+            existing = root / "A\u0300 la une"
+            existing.mkdir()
+
+            self.assertTrue(library.publish(episode, "2026-11-16", "05:30", 1))
+            self.assertEqual(library.output, existing)
+            self.assertEqual((existing / old.name).read_bytes(), b"existing audio")
+            self.assertFalse(old.exists())
+
+    def test_migration_never_overwrites_existing_audio(self) -> None:
+        aired = datetime(2026, 11, 16, tzinfo=TORONTO)
+        episode, = episodes(fixture("302", aired, [101]), "302")
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            library = Library(root, "302")
+            library.state["entries"][episode.id] = {
+                "date": "2026-11-16", "media": ["101"], "complete": True,
+            }
+            old = root / "302" / "2026-11-16-305.mp3"
+            old.parent.mkdir()
+            old.write_bytes(b"old")
+            destination = root / "Émission 302" / old.name
+            destination.parent.mkdir()
+            destination.write_bytes(b"other")
+
+            with self.assertRaises(FileExistsError):
+                library.publish(episode, "2026-11-16", "05:30", 1)
+            self.assertEqual(old.read_bytes(), b"old")
+            self.assertEqual(destination.read_bytes(), b"other")
+
+    def test_existing_unindexed_episode_is_not_overwritten(self) -> None:
+        aired = datetime(2026, 11, 16, tzinfo=TORONTO)
+        episode, = episodes(fixture("302", aired, [101]), "302")
+        with tempfile.TemporaryDirectory() as directory:
+            library = Library(Path(directory), "302")
+            output = Path(directory) / "Émission 302" / "2026-11-16-305.mp3"
+            output.parent.mkdir()
+            output.write_bytes(b"other")
+            with self.assertRaises(FileExistsError):
+                library.publish(episode, "2026-11-16", "05:30", 1)
+            self.assertEqual(output.read_bytes(), b"other")
+
     def test_first_segment_is_published_before_fetching_the_second(self) -> None:
         show = "3858"
         schedule = SCHEDULES[show]

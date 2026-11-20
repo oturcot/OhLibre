@@ -1,10 +1,17 @@
 import json
 import logging
+import os
+import re
 import subprocess
+import unicodedata
 from pathlib import Path
+from threading import Lock
 from typing import TypedDict
 
 from ohdio import Episode, manifest
+
+
+DIRECTORY_LOCK = Lock()
 
 
 class Entry(TypedDict):
@@ -58,13 +65,50 @@ def publish_audio(output: Path, work: Path, episode: Episode, date: str, hour: s
 
 class Library:
     def __init__(self, root: Path, show: str) -> None:
+        self.root = root
+        self.show = show
         self.output = root / show
         self.work = root / ".ohdio" / show
-        self.output.mkdir(parents=True, exist_ok=True)
         self.work.mkdir(parents=True, exist_ok=True)
         self.index = self.work / "index.json"
         self.state: State = (json.loads(self.index.read_text(encoding="utf-8"))
                              if self.index.exists() else {"floor": "", "entries": {}})
+
+    def set_show_title(self, title: str) -> None:
+        name = unicodedata.normalize("NFC", re.sub(r'[\\/:*?"<>|\x00-\x1f]', " ", title)).strip(" .")
+        if not name or name in {".ohdio", ".ohdio.lock"}:
+            raise ValueError(f"Nom d'émission invalide : {title!r}")
+        with DIRECTORY_LOCK:
+            markers = self.root / ".ohdio"
+            for marker in markers.glob("*/directory"):
+                if marker.parent != self.work and unicodedata.normalize(
+                    "NFC", marker.read_text(encoding="utf-8")
+                ) == name:
+                    raise ValueError(f"Le dossier {name!r} appartient déjà à une autre émission")
+            matches = [path for path in self.root.iterdir()
+                       if unicodedata.normalize("NFC", path.name) == name]
+            if len(matches) > 1:
+                raise ValueError(f"Plusieurs dossiers correspondent à {name!r}")
+            output = matches[0] if matches else self.root / name
+            output.mkdir(parents=True, exist_ok=True)
+            marker = self.work / "directory"
+            if marker.exists() and unicodedata.normalize("NFC", marker.read_text(encoding="utf-8")) != name:
+                raise ValueError(f"Le nom de l'émission {self.show} a changé; migration manuelle requise")
+            marker.write_text(name, encoding="utf-8")
+            legacy = self.root / self.show
+            if legacy != output:
+                for episode_id, entry in self.state["entries"].items():
+                    old = legacy / f'{entry["date"]}-{episode_id}.mp3'
+                    new = output / old.name
+                    if not old.is_file():
+                        continue
+                    try:
+                        os.link(old, new)
+                    except FileExistsError:
+                        if not os.path.samefile(old, new):
+                            raise FileExistsError(f"Migration refusée : {new} existe déjà")
+                    old.unlink()
+            self.output = output
 
     def save(self) -> None:
         temp = self.index.with_suffix(".tmp")
@@ -76,6 +120,7 @@ class Library:
         entry = entries.get(episode.id)
         if episode.replay:
             return True
+        self.set_show_title(episode.show_title)
         if any(set(episode.media).intersection(other["media"])
                for key, other in entries.items() if key != episode.id):
             logging.info("Épisode %s ignoré : média déjà publié", episode.id)
@@ -84,6 +129,8 @@ class Library:
         if entry:
             date = entry["date"]
         output = self.output / f"{date}-{episode.id}.mp3"
+        if not entry and output.exists():
+            raise FileExistsError(f"Publication refusée : {output} existe déjà sans index")
         previous = entry["media"] if entry and output.is_file() else []
         if entry and entry["complete"] and output.is_file() and list(episode.media) == previous:
             return True
