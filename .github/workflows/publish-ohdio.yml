@@ -66,6 +66,12 @@ jobs:
           fi
           if release_draft="$(gh release view "$tag" --repo "$GITHUB_REPOSITORY" --json isDraft --jq .isDraft 2>/dev/null)"; then
             if [[ "$release_draft" == true ]]; then
+              draft_target="$(gh release view "$tag" --repo "$GITHUB_REPOSITORY" \
+                --json targetCommitish --jq .targetCommitish)"
+              if [[ "$draft_target" != "$GITHUB_SHA" ]]; then
+                printf 'Draft release %s targets %s, expected %s\n' "$tag" "$draft_target" "$GITHUB_SHA" >&2
+                exit 1
+              fi
               echo "Release $tag is still a draft; GHCR publication will validate and finalize it."
             else
               echo "Release $tag is already published; no files were replaced."
