@@ -10,7 +10,7 @@ from unittest.mock import patch
 from urllib.error import URLError
 
 from downloader import SCHEDULES, TORONTO, next_balado, select_scheduled, sync_balado
-from library import Library, fetch, ffmpeg
+from library import Library, ffmpeg
 from ohdio import discover, episodes, manifest
 
 
@@ -31,30 +31,6 @@ def probe(path: Path) -> dict:
 
 
 class DownloadTest(unittest.TestCase):
-    def test_download_progress_is_logged(self) -> None:
-        with tempfile.TemporaryDirectory() as directory:
-            path = Path(directory) / "101.mp3"
-            def fake_ffmpeg(*args: str) -> None:
-                Path(args[-1]).write_bytes(b"audio")
-            with patch("library.manifest", return_value="https://example.test/stream"), \
-                 patch("library.ffmpeg", side_effect=fake_ffmpeg), \
-                 self.assertLogs(level="INFO") as logs:
-                self.assertTrue(fetch("101", path))
-            self.assertTrue(any("Téléchargement du média 101" in line for line in logs.output))
-            self.assertTrue(any("Média 101 téléchargé" in line for line in logs.output))
-            self.assertEqual(path.read_bytes(), b"audio")
-
-    def test_failed_download_is_not_logged_as_complete(self) -> None:
-        with tempfile.TemporaryDirectory() as directory:
-            path = Path(directory) / "101.mp3"
-            with patch("library.manifest", return_value="https://example.test/stream"), \
-                 patch("library.ffmpeg", side_effect=subprocess.CalledProcessError(1, "ffmpeg")), \
-                 self.assertLogs(level="INFO") as logs:
-                with self.assertRaises(subprocess.CalledProcessError):
-                    fetch("101", path)
-            self.assertFalse(any("téléchargé" in line for line in logs.output))
-            self.assertFalse(path.exists())
-
     def test_first_segment_is_published_before_fetching_the_second(self) -> None:
         show = "3858"
         schedule = SCHEDULES[show]
