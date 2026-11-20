@@ -96,8 +96,10 @@ Les tests hors réseau utilisent des sons générés. Les tests réseau vérifie
 les six émissions et décodent un court extrait de leurs segments sans
 conserver l'audio. GitHub Actions exécute ces tests sur les PR autorisées,
 après fusion vers `main` ou `stable`, et avant les releases. Les archives
-amd64 et arm64 sont construites, rechargées et testées séparément sur des
-runners GitHub hébergés. Pour les PR d'autres personnes, une approbation
+amd64 et arm64 sont construites, rechargées et testées séparément sur le runner
+auto-hébergé Linux x64 (`self-hosted`, `Linux`, `X64`), qui doit fournir Docker
+Engine et Docker Compose au compte du runner; QEMU fournit l'émulation ARM64.
+Pour les PR d'autres personnes, une approbation
 du propriétaire sur le commit courant démarre les tests; une nouvelle
 modification nécessite une nouvelle approbation.
 

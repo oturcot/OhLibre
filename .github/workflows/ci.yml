@@ -24,7 +24,7 @@ concurrency:
 
 jobs:
   authorize:
-    runs-on: ubuntu-latest
+    runs-on: [self-hosted, Linux, X64]
     outputs:
       allowed: ${{ steps.check.outputs.allowed }}
       ref: ${{ steps.check.outputs.ref }}
@@ -64,7 +64,7 @@ jobs:
     name: Gated tests
     if: always() && needs.authorize.outputs.allowed == 'true'
     needs: [authorize, ohdio, archives]
-    runs-on: ubuntu-latest
+    runs-on: [self-hosted, Linux, X64]
     env:
       TEST_RESULT: ${{ needs.ohdio.result }}
       ARCHIVE_RESULT: ${{ needs.archives.result }}
