@@ -6,7 +6,7 @@ import subprocess
 import unicodedata
 from pathlib import Path
 from threading import Lock
-from typing import TypedDict
+from typing import NotRequired, TypedDict
 
 from ohdio import Episode, manifest
 
@@ -18,6 +18,7 @@ class Entry(TypedDict):
     date: str
     media: list[str]
     complete: bool
+    filename: NotRequired[str]
 
 
 class State(TypedDict):
@@ -44,6 +45,17 @@ def fetch(media_id: str, path: Path) -> bool:
     finally:
         temp.unlink(missing_ok=True)
     return True
+
+
+def episode_filename(date: str, title: str) -> str:
+    if not re.fullmatch(r"\d{4}-\d{2}-\d{2}", date):
+        raise ValueError(f"Date de fichier invalide : {date!r}")
+    title = unicodedata.normalize("NFC", re.sub(r'[\\/:*?"<>|\x00-\x1f]', " ", title))
+    title = " ".join(title.split()).strip(" .")
+    title = title.encode("utf-8")[:240].decode("utf-8", errors="ignore").rstrip(" .")
+    if not title:
+        raise ValueError("Titre d'épisode inutilisable comme nom de fichier")
+    return f"{date}_{title}.mp3"
 
 
 def publish_audio(output: Path, work: Path, episode: Episode, date: str, hour: str,
@@ -98,7 +110,7 @@ class Library:
             legacy = self.root / self.show
             if legacy != output:
                 for episode_id, entry in self.state["entries"].items():
-                    old = legacy / f'{entry["date"]}-{episode_id}.mp3'
+                    old = legacy / entry.get("filename", f'{entry["date"]}-{episode_id}.mp3')
                     new = output / old.name
                     if not old.is_file():
                         continue
@@ -128,7 +140,27 @@ class Library:
 
         if entry:
             date = entry["date"]
-        output = self.output / f"{date}-{episode.id}.mp3"
+        filename = entry.get("filename") if entry else None
+        if filename is not None and (Path(filename).name != filename or "\\" in filename):
+            raise ValueError(f"Nom de fichier indexé invalide : {filename!r}")
+        if filename is None:
+            filename = episode_filename(date, episode.title)
+            output = self.output / filename
+            old = self.output / f"{date}-{episode.id}.mp3"
+            if output.exists() and (not entry or not old.exists() or not os.path.samefile(old, output)):
+                raise FileExistsError(f"Publication refusée : {output} existe déjà sans index")
+            if entry:
+                entry["filename"] = filename
+                self.save()
+        output = self.output / filename
+        old = self.output / f"{date}-{episode.id}.mp3"
+        if entry and old.is_file() and old != output:
+            try:
+                os.link(old, output)
+            except FileExistsError:
+                if not os.path.samefile(old, output):
+                    raise FileExistsError(f"Migration refusée : {output} existe déjà")
+            old.unlink()
         if not entry and output.exists():
             raise FileExistsError(f"Publication refusée : {output} existe déjà sans index")
         previous = entry["media"] if entry and output.is_file() else []
@@ -152,7 +184,8 @@ class Library:
             if len(ready) == 1 and len(episode.media) > 1 and not previous:
                 publish_audio(output, self.work, episode, date, hour, ready)
                 previous = ready.copy()
-                entries[episode.id] = {"date": date, "media": ready.copy(), "complete": False}
+                entries[episode.id] = {"date": date, "media": ready.copy(), "complete": False,
+                                       "filename": filename}
                 self.save()
                 logging.info("%s : partiel (1 segment)", output)
         complete = bool(ready) and len(ready) >= expected and len(ready) == len(episode.media)
@@ -163,7 +196,8 @@ class Library:
             publish_audio(output, self.work, episode, date, hour, ready)
             logging.info("%s : %s (%d segment(s))", output, "complet" if complete else "partiel", len(ready))
 
-        entries[episode.id] = {"date": date, "media": ready, "complete": complete}
+        entries[episode.id] = {"date": date, "media": ready, "complete": complete,
+                               "filename": filename}
         self.save()
         if complete:
             for mid in ready:
