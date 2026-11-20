@@ -39,12 +39,6 @@ jobs:
           docker run --rm -e OHDIO_LIVE_TEST=1 \
             -v "$PWD/tests:/app/tests:ro" --entrypoint python \
             radio-canada-podcast:local -m unittest discover -s tests -v
-          docker image tag radio-canada-podcast:local radio-canada-podcast:tested
-          bash .github/scripts/stamp-image-version.sh 0.0.0-beta.0 "$ARCH"
-          docker run --rm --entrypoint python radio-canada-podcast:local \
-            -c 'import os; assert os.environ["OHDIO_VERSION"] == "0.0.0-beta.0"'
-          docker image tag radio-canada-podcast:tested radio-canada-podcast:local
-          docker image rm radio-canada-podcast:tested
           sed -e '/^    build: /d' -e 's/    pull_policy: build/    pull_policy: never/' \
             docker-compose.yml > release-compose.yml
           docker compose -f release-compose.yml config -q
@@ -61,3 +55,10 @@ jobs:
           if-no-files-found: error
           compression-level: 0
           retention-days: 30
+      - name: Verify the release version in the image
+        env:
+          ARCH: ${{ matrix.arch }}
+        run: |
+          bash .github/scripts/stamp-image-version.sh 0.0.0-beta.0 "$ARCH"
+          docker run --rm --entrypoint python radio-canada-podcast:local \
+            -c 'import os; assert os.environ["OHDIO_VERSION"] == "0.0.0-beta.0"'

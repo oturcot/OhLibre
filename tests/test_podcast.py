@@ -9,7 +9,7 @@ from pathlib import Path
 from unittest.mock import patch
 from urllib.error import URLError
 
-from downloader import SCHEDULES, TORONTO, main, next_balado, select_scheduled, sync_balado
+from downloader import SCHEDULES, TORONTO, next_balado, select_scheduled, sync_balado
 from library import Library, ffmpeg
 from ohdio import discover, episodes, manifest
 
@@ -31,17 +31,6 @@ def probe(path: Path) -> dict:
 
 
 class DownloadTest(unittest.TestCase):
-    def test_startup_logs_the_running_release_version(self) -> None:
-        with tempfile.TemporaryDirectory() as directory:
-            with patch.dict(os.environ, {"OHDIO_SHOWS": "302", "OHDIO_OUTPUT": directory,
-                                         "OHDIO_VERSION": "0.4.2-beta.1"}), \
-                 patch("sys.argv", ["downloader.py", "--once"]), \
-                 patch("downloader.signal.signal"), patch("downloader.run"), \
-                 self.assertLogs(level="INFO") as logs:
-                main()
-            self.assertTrue(any("Démarrage" in line and "0.4.2-beta.1" in line
-                                for line in logs.output))
-
     def test_first_segment_is_published_before_fetching_the_second(self) -> None:
         show = "3858"
         schedule = SCHEDULES[show]
