@@ -1,6 +1,8 @@
+import errno
 import json
 import os
 import subprocess
+import sys
 import tempfile
 import unittest
 from dataclasses import replace
@@ -10,7 +12,7 @@ from unittest.mock import patch
 from urllib.error import URLError
 
 from downloader import SCHEDULES, TORONTO, next_balado, select_scheduled, sync_balado
-from library import Library, ffmpeg
+from library import Library, ffmpeg, move_no_replace
 from ohdio import discover, episodes, manifest
 
 
@@ -31,6 +33,21 @@ def probe(path: Path) -> dict:
 
 
 class DownloadTest(unittest.TestCase):
+    @unittest.skipUnless(sys.platform == "linux", "renommage exclusif Linux")
+    def test_move_without_hard_links_preserves_existing_destination(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            source, destination = root / "old.mp3", root / "new.mp3"
+            source.write_bytes(b"old")
+            with patch("library.os.link", side_effect=OSError(errno.ENOTSUP, "unsupported")):
+                move_no_replace(source, destination)
+                self.assertEqual(destination.read_bytes(), b"old")
+                source.write_bytes(b"other")
+                with self.assertRaises(FileExistsError):
+                    move_no_replace(source, destination)
+            self.assertEqual(source.read_bytes(), b"other")
+            self.assertEqual(destination.read_bytes(), b"old")
+
     def test_existing_indexed_episode_moves_to_named_unicode_directory(self) -> None:
         aired = datetime(2026, 11, 16, tzinfo=TORONTO)
         episode, = episodes(fixture("302", aired, [101]), "302")

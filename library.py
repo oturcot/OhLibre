@@ -1,8 +1,11 @@
+import ctypes
+import errno
 import json
 import logging
 import os
 import re
 import subprocess
+import sys
 import unicodedata
 from pathlib import Path
 from threading import Lock
@@ -12,6 +15,32 @@ from ohdio import Episode, manifest
 
 
 DIRECTORY_LOCK = Lock()
+
+
+def move_no_replace(source: Path, destination: Path) -> None:
+    try:
+        os.link(source, destination)
+    except FileExistsError:
+        if not os.path.samefile(source, destination):
+            raise FileExistsError(f"Migration refusée : {destination} existe déjà")
+    except OSError as error:
+        if sys.platform != "linux" or error.errno not in {
+            errno.EPERM, errno.ENOSYS, errno.ENOTSUP, errno.EXDEV,
+        }:
+            raise
+        libc = ctypes.CDLL(None, use_errno=True)
+        try:
+            rename = libc.renameat2
+        except AttributeError as unavailable:
+            raise OSError(errno.ENOTSUP, "Renommage exclusif indisponible", str(source)) from unavailable
+        rename.argtypes = [ctypes.c_int, ctypes.c_char_p, ctypes.c_int, ctypes.c_char_p, ctypes.c_uint]
+        rename.restype = ctypes.c_int
+        at_fdcwd, rename_noreplace = -100, 1
+        if rename(at_fdcwd, os.fsencode(source), at_fdcwd, os.fsencode(destination), rename_noreplace) != 0:
+            code = ctypes.get_errno()
+            raise OSError(code, os.strerror(code), str(destination))
+        return
+    source.unlink()
 
 
 class Entry(TypedDict):
@@ -102,12 +131,7 @@ class Library:
                     new = output / old.name
                     if not old.is_file():
                         continue
-                    try:
-                        os.link(old, new)
-                    except FileExistsError:
-                        if not os.path.samefile(old, new):
-                            raise FileExistsError(f"Migration refusée : {new} existe déjà")
-                    old.unlink()
+                    move_no_replace(old, new)
             self.output = output
 
     def save(self) -> None:
