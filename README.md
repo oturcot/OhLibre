@@ -98,11 +98,12 @@ Les tests hors réseau utilisent des sons générés. Les tests réseau vérifie
 les six émissions et décodent un court extrait de leurs segments sans
 conserver l'audio. GitHub Actions exécute ces tests sur les PR autorisées,
 après fusion vers `main` ou `stable`, et avant les releases. Sur les PR,
-les tests Python et réseau s'exécutent sur un runner GitHub sans construire
+les tests Python et réseau s'exécutent sur le runner auto-hébergé sans construire
 d'image ni lancer de conteneur. Après fusion, les archives amd64 et arm64
 sont construites, rechargées et testées séparément sur le runner
 auto-hébergé Linux x64 (`self-hosted`, `Linux`, `X64`), qui doit fournir Docker
-Engine et Docker Compose au compte du runner; QEMU fournit l'émulation ARM64.
+Engine, Docker Compose et FFmpeg (dont `ffprobe`) au compte du runner;
+QEMU fournit l'émulation ARM64.
 Pour les PR d'autres personnes, une approbation
 du propriétaire sur le commit courant démarre les tests; une nouvelle
 modification nécessite une nouvelle approbation.
