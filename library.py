@@ -1,6 +1,8 @@
 import json
 import logging
+import re
 import subprocess
+import unicodedata
 from pathlib import Path
 from typing import TypedDict
 
@@ -58,13 +60,24 @@ def publish_audio(output: Path, work: Path, episode: Episode, date: str, hour: s
 
 class Library:
     def __init__(self, root: Path, show: str) -> None:
+        self.root = root
         self.output = root / show
         self.work = root / ".ohdio" / show
-        self.output.mkdir(parents=True, exist_ok=True)
         self.work.mkdir(parents=True, exist_ok=True)
         self.index = self.work / "index.json"
         self.state: State = (json.loads(self.index.read_text(encoding="utf-8"))
                              if self.index.exists() else {"floor": "", "entries": {}})
+
+    def set_show_title(self, title: str) -> None:
+        name = unicodedata.normalize("NFC", re.sub(r'[\\/:*?"<>|\x00-\x1f]', " ", title)).strip(" .")
+        if not name or name in {".ohdio", ".ohdio.lock"}:
+            raise ValueError(f"Nom d'émission invalide : {title!r}")
+        matches = [path for path in self.root.iterdir()
+                   if unicodedata.normalize("NFC", path.name) == name]
+        if len(matches) > 1:
+            raise ValueError(f"Plusieurs dossiers correspondent à {name!r}")
+        self.output = matches[0] if matches else self.root / name
+        self.output.mkdir(parents=True, exist_ok=True)
 
     def save(self) -> None:
         temp = self.index.with_suffix(".tmp")
@@ -76,6 +89,7 @@ class Library:
         entry = entries.get(episode.id)
         if episode.replay:
             return True
+        self.set_show_title(episode.show_title)
         if any(set(episode.media).intersection(other["media"])
                for key, other in entries.items() if key != episode.id):
             logging.info("Épisode %s ignoré : média déjà publié", episode.id)
@@ -84,6 +98,8 @@ class Library:
         if entry:
             date = entry["date"]
         output = self.output / f"{date}-{episode.id}.mp3"
+        if not entry and output.exists():
+            raise FileExistsError(f"Publication refusée : {output} existe déjà sans index")
         previous = entry["media"] if entry and output.is_file() else []
         if entry and entry["complete"] and output.is_file() and list(episode.media) == previous:
             return True

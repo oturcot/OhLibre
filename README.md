@@ -23,10 +23,10 @@ Le dossier de stockage par défaut est **`./podcasts`**, à côté de
 [`docker-compose.yml`](./docker-compose.yml), détecté sans option `-f`.
 Pour le modifier, change `volumes.source` dans le Compose ou crée un fichier
 `.env` avec `PODCAST_DIR=/chemin/vers/Podcasts`. Le conteneur y accède sous
-`/podcasts`. Il crée un sous-dossier par numéro d'émission; configure le
+`/podcasts`. Il crée un sous-dossier portant le nom de l'émission; configure le
 serveur pour lire les MP3, pas le dossier caché `.ohdio`. Conserve ce dossier
-caché lors des migrations : il contient l'index des épisodes et les segments
-en attente.
+caché : il contient l'index des épisodes et les segments en attente. Les
+fichiers existants ne sont ni copiés ni déplacés.
 
 | ID dans `OHDIO_SHOWS` | Émission | Première vérification (heure de Toronto) |
 | --- | --- | --- |

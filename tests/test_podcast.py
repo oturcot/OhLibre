@@ -20,7 +20,7 @@ def fixture(show: str, aired: datetime, media: list[int]) -> str:
         "broadcastedLastTimeAt": aired.isoformat(), "isBroadcastedReplay": False,
         "mediaIds": media, "title": "Épisode complet&nbsp;: test", "summary": "<p>Résumé</p>",
     }
-    data = {"typename": "ProgramPage", "program": {"globalId": {"id": show}}, "episodes": [record]}
+    data = {"typename": "ProgramPage", "program": {"globalId": {"id": show}, "title": f"Émission {show}"}, "episodes": [record]}
     return "<script>window._rcState_ = " + json.dumps({"pages": {"pages": {"/": {"data": data}}}}) + ";</script>"
 
 
@@ -31,6 +31,31 @@ def probe(path: Path) -> dict:
 
 
 class DownloadTest(unittest.TestCase):
+    def test_reuses_existing_unicode_show_directory_without_moving_old_files(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            library = Library(root, "302")
+            old = root / "302" / "2026-11-16-305.mp3"
+            old.parent.mkdir()
+            old.write_bytes(b"existing audio")
+            existing = root / "A\u0300 la une"
+            existing.mkdir()
+            library.set_show_title("À la une")
+            self.assertEqual(library.output, existing)
+            self.assertEqual(old.read_bytes(), b"existing audio")
+
+    def test_existing_unindexed_episode_is_not_overwritten(self) -> None:
+        aired = datetime(2026, 11, 16, tzinfo=TORONTO)
+        episode, = episodes(fixture("302", aired, [101]), "302")
+        with tempfile.TemporaryDirectory() as directory:
+            library = Library(Path(directory), "302")
+            output = Path(directory) / "Émission 302" / "2026-11-16-305.mp3"
+            output.parent.mkdir()
+            output.write_bytes(b"other")
+            with self.assertRaises(FileExistsError):
+                library.publish(episode, "2026-11-16", "05:30", 1)
+            self.assertEqual(output.read_bytes(), b"other")
+
     def test_first_segment_is_published_before_fetching_the_second(self) -> None:
         show = "3858"
         schedule = SCHEDULES[show]
