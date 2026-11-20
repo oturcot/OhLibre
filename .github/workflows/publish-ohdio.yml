@@ -20,7 +20,7 @@ permissions:
 
 jobs:
   release:
-    runs-on: ubuntu-latest
+    runs-on: [self-hosted, Linux, X64]
     timeout-minutes: 30
     permissions:
       actions: read
@@ -134,7 +134,7 @@ jobs:
             --target "$TARGET_SHA" --title "$tag" --generate-notes --draft "${flags[@]}"
   ghcr:
     needs: release
-    runs-on: ubuntu-latest
+    runs-on: [self-hosted, Linux, X64]
     timeout-minutes: 20
     permissions:
       contents: write
@@ -179,7 +179,7 @@ jobs:
             release-assets "$current_channel_version"
   publish:
     needs: [release, ghcr]
-    runs-on: ubuntu-latest
+    runs-on: [self-hosted, Linux, X64]
     timeout-minutes: 5
     permissions:
       contents: write
