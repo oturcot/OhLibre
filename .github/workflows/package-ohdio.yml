@@ -24,6 +24,11 @@ jobs:
         with:
           ref: ${{ inputs.ref || github.sha }}
           persist-credentials: false
+      - uses: actions/checkout@v7
+        with:
+          ref: ${{ github.workflow_sha }}
+          path: .workflow-code
+          persist-credentials: false
       - uses: dcarbone/install-jq-action@v4.0.1
       - uses: docker/setup-qemu-action@v3
         if: matrix.arch == 'arm64'
@@ -50,13 +55,6 @@ jobs:
             --arg image "${GITHUB_REPOSITORY_OWNER,,}/ohlibre:latest" \
             '.services.ohdio | .image == $image and .pull_policy == "always" and
              .build == null and any(.volumes[]; .type == "bind" and .target == "/podcasts")'
-      - uses: actions/upload-artifact@v7
-        with:
-          name: ohdio-linux-${{ matrix.arch }}
-          path: ohlibre-linux-${{ matrix.arch }}.tar.gz
-          if-no-files-found: error
-          compression-level: 0
-          retention-days: 7
       - name: Verify the release version in the image
         env:
           ARCH: ${{ matrix.arch }}
@@ -64,3 +62,10 @@ jobs:
           bash .github/scripts/stamp-image-version.sh 0.0.0-beta.0 "$ARCH"
           docker run --rm --entrypoint python ohlibre:local \
             -c 'import os; assert os.environ["OHDIO_VERSION"] == "0.0.0-beta.0"'
+      - name: Keep the tested archive on the runner
+        env:
+          ARCH: ${{ matrix.arch }}
+          TARGET_SHA: ${{ inputs.ref || github.sha }}
+        run: |
+          bash .workflow-code/.github/scripts/image-archives.sh store "$GITHUB_RUN_ID" \
+            "$TARGET_SHA" "$ARCH" "ohlibre-linux-$ARCH.tar.gz"

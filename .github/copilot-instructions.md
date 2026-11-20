@@ -56,14 +56,18 @@ Suivre aussi les instructions de [AGENTS.md](../AGENTS.md).
   auto-hébergé Linux x64; Docker Engine, Docker Compose, FFmpeg et `ffprobe`
   doivent être accessibles au compte du runner. QEMU fournit l'émulation ARM64.
 - Conserver le statut requis `CI / gated tests` et les protections de branches.
-  Les images testées restent disponibles comme artefacts CI pendant sept jours.
+  Les archives des images testées sont conservées sept jours sur le runner,
+  dans `RUNNER_WORKSPACE/.ohlibre-image-archives`, puis supprimées lors d'un
+  prochain empaquetage. Les jobs doivent partager cet espace persistant;
+  `flock` et `sha256sum` doivent être disponibles sur le runner.
 
 ## Publication
 
 - Un commit testé sur `main` produit une prérelease et le tag Docker Hub
   `beta`. Le répartiteur s'exécute après la CI, chaque heure ou manuellement;
   il ignore les commits antérieurs à la migration Docker Hub ou sans les deux
-  artefacts conservés. Une erreur est réessayée après une heure.
+  archives conservées. Les anciens artefacts GitHub restent utilisables jusqu'à
+  leur expiration. Une erreur est réessayée après une heure.
 - La fusion de `main` vers `stable` reteste et publie `latest` et `X.Y.Z`.
   `.github/NEXT_VERSION` définit la prochaine ligne `X.Y`; les bêtas ajoutent
   `-beta.N`. Le workflow Release sur `stable` permet aussi une publication

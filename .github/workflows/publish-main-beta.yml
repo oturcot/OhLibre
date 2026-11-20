@@ -27,6 +27,7 @@ jobs:
     outputs:
       sha: ${{ steps.select.outputs.sha }}
       run_id: ${{ steps.select.outputs.run_id }}
+      archive_source: ${{ steps.select.outputs.archive_source }}
       version: ${{ steps.reserve.outputs.version }}
     steps:
       - uses: actions/checkout@v7
@@ -39,6 +40,8 @@ jobs:
           GH_TOKEN: ${{ github.token }}
         run: |
           set -euo pipefail
+          command -v flock
+          command -v sha256sum
           gh api --paginate "repos/$GITHUB_REPOSITORY/actions/workflows/ci.yml/runs?per_page=100" \
             --jq '.workflow_runs[] | select(.event == "push" and .head_branch == "main" and .conclusion == "success") | [.head_sha, .id] | @tsv' > "$RUNNER_TEMP/runs"
           gh api --paginate "repos/$GITHUB_REPOSITORY/releases?per_page=100" \
@@ -75,12 +78,19 @@ jobs:
             while read -r run_sha run_id; do
               [[ "$run_sha" == "$sha" ]] || continue
               found=true
+              if bash .github/scripts/image-archives.sh check "$run_id" "$sha"; then
+                echo "sha=$sha" >> "$GITHUB_OUTPUT"
+                echo "run_id=$run_id" >> "$GITHUB_OUTPUT"
+                echo "archive_source=runner" >> "$GITHUB_OUTPUT"
+                exit 0
+              fi
               artifacts="$(gh api --paginate "repos/$GITHUB_REPOSITORY/actions/runs/$run_id/artifacts?per_page=100" \
                 --jq '.artifacts[] | select(.expired == false) | .name')"
               if grep -Fxq 'ohdio-linux-amd64' <<< "$artifacts" &&
                  grep -Fxq 'ohdio-linux-arm64' <<< "$artifacts"; then
                 echo "sha=$sha" >> "$GITHUB_OUTPUT"
                 echo "run_id=$run_id" >> "$GITHUB_OUTPUT"
+                echo "archive_source=github" >> "$GITHUB_OUTPUT"
                 exit 0
               fi
             done < "$RUNNER_TEMP/runs"
@@ -116,6 +126,7 @@ jobs:
       version: ${{ needs.select.outputs.version }}
       ref: ${{ needs.select.outputs.sha }}
       run_id: ${{ needs.select.outputs.run_id }}
+      archive_source: ${{ needs.select.outputs.archive_source }}
     secrets:
       DOCKERHUB_USERNAME: ${{ secrets.DOCKERHUB_USERNAME }}
       DOCKERHUB_TOKEN: ${{ secrets.DOCKERHUB_TOKEN }}
