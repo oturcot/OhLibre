@@ -1,8 +1,6 @@
-import errno
 import json
 import os
 import subprocess
-import sys
 import tempfile
 import unittest
 from dataclasses import replace
@@ -12,7 +10,7 @@ from unittest.mock import patch
 from urllib.error import URLError
 
 from downloader import SCHEDULES, TORONTO, next_balado, select_scheduled, sync_balado
-from library import Library, ffmpeg, move_no_replace
+from library import Library, ffmpeg
 from ohdio import discover, episodes, manifest
 
 
@@ -33,63 +31,18 @@ def probe(path: Path) -> dict:
 
 
 class DownloadTest(unittest.TestCase):
-    @unittest.skipUnless(sys.platform == "linux", "renommage exclusif Linux")
-    def test_move_without_hard_links_preserves_existing_destination(self) -> None:
-        with tempfile.TemporaryDirectory() as directory:
-            root = Path(directory)
-            source, destination = root / "old.mp3", root / "new.mp3"
-            source.write_bytes(b"old")
-            with patch("library.os.link", side_effect=OSError(errno.ENOTSUP, "unsupported")):
-                move_no_replace(source, destination)
-                self.assertEqual(destination.read_bytes(), b"old")
-                source.write_bytes(b"other")
-                with self.assertRaises(FileExistsError):
-                    move_no_replace(source, destination)
-            self.assertEqual(source.read_bytes(), b"other")
-            self.assertEqual(destination.read_bytes(), b"old")
-
-    def test_existing_indexed_episode_moves_to_named_unicode_directory(self) -> None:
-        aired = datetime(2026, 11, 16, tzinfo=TORONTO)
-        episode, = episodes(fixture("302", aired, [101]), "302")
-        episode = replace(episode, show_title="À la une")
+    def test_reuses_existing_unicode_show_directory_without_moving_old_files(self) -> None:
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory)
             library = Library(root, "302")
-            library.state["entries"][episode.id] = {
-                "date": "2026-11-16", "media": ["101"], "complete": True,
-            }
-            library.save()
             old = root / "302" / "2026-11-16-305.mp3"
             old.parent.mkdir()
             old.write_bytes(b"existing audio")
             existing = root / "A\u0300 la une"
             existing.mkdir()
-
-            self.assertTrue(library.publish(episode, "2026-11-16", "05:30", 1))
+            library.set_show_title("À la une")
             self.assertEqual(library.output, existing)
-            self.assertEqual((existing / old.name).read_bytes(), b"existing audio")
-            self.assertFalse(old.exists())
-
-    def test_migration_never_overwrites_existing_audio(self) -> None:
-        aired = datetime(2026, 11, 16, tzinfo=TORONTO)
-        episode, = episodes(fixture("302", aired, [101]), "302")
-        with tempfile.TemporaryDirectory() as directory:
-            root = Path(directory)
-            library = Library(root, "302")
-            library.state["entries"][episode.id] = {
-                "date": "2026-11-16", "media": ["101"], "complete": True,
-            }
-            old = root / "302" / "2026-11-16-305.mp3"
-            old.parent.mkdir()
-            old.write_bytes(b"old")
-            destination = root / "Émission 302" / old.name
-            destination.parent.mkdir()
-            destination.write_bytes(b"other")
-
-            with self.assertRaises(FileExistsError):
-                library.publish(episode, "2026-11-16", "05:30", 1)
-            self.assertEqual(old.read_bytes(), b"old")
-            self.assertEqual(destination.read_bytes(), b"other")
+            self.assertEqual(old.read_bytes(), b"existing audio")
 
     def test_existing_unindexed_episode_is_not_overwritten(self) -> None:
         aired = datetime(2026, 11, 16, tzinfo=TORONTO)

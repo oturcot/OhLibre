@@ -1,46 +1,12 @@
-import ctypes
-import errno
 import json
 import logging
-import os
 import re
 import subprocess
-import sys
 import unicodedata
 from pathlib import Path
-from threading import Lock
 from typing import TypedDict
 
 from ohdio import Episode, manifest
-
-
-DIRECTORY_LOCK = Lock()
-
-
-def move_no_replace(source: Path, destination: Path) -> None:
-    try:
-        os.link(source, destination)
-    except FileExistsError:
-        if not os.path.samefile(source, destination):
-            raise FileExistsError(f"Migration refusée : {destination} existe déjà")
-    except OSError as error:
-        if sys.platform != "linux" or error.errno not in {
-            errno.EPERM, errno.ENOSYS, errno.ENOTSUP, errno.EXDEV,
-        }:
-            raise
-        libc = ctypes.CDLL(None, use_errno=True)
-        try:
-            rename = libc.renameat2
-        except AttributeError as unavailable:
-            raise OSError(errno.ENOTSUP, "Renommage exclusif indisponible", str(source)) from unavailable
-        rename.argtypes = [ctypes.c_int, ctypes.c_char_p, ctypes.c_int, ctypes.c_char_p, ctypes.c_uint]
-        rename.restype = ctypes.c_int
-        at_fdcwd, rename_noreplace = -100, 1
-        if rename(at_fdcwd, os.fsencode(source), at_fdcwd, os.fsencode(destination), rename_noreplace) != 0:
-            code = ctypes.get_errno()
-            raise OSError(code, os.strerror(code), str(destination))
-        return
-    source.unlink()
 
 
 class Entry(TypedDict):
@@ -95,7 +61,6 @@ def publish_audio(output: Path, work: Path, episode: Episode, date: str, hour: s
 class Library:
     def __init__(self, root: Path, show: str) -> None:
         self.root = root
-        self.show = show
         self.output = root / show
         self.work = root / ".ohdio" / show
         self.work.mkdir(parents=True, exist_ok=True)
@@ -107,32 +72,12 @@ class Library:
         name = unicodedata.normalize("NFC", re.sub(r'[\\/:*?"<>|\x00-\x1f]', " ", title)).strip(" .")
         if not name or name in {".ohdio", ".ohdio.lock"}:
             raise ValueError(f"Nom d'émission invalide : {title!r}")
-        with DIRECTORY_LOCK:
-            markers = self.root / ".ohdio"
-            for marker in markers.glob("*/directory"):
-                if marker.parent != self.work and unicodedata.normalize(
-                    "NFC", marker.read_text(encoding="utf-8")
-                ) == name:
-                    raise ValueError(f"Le dossier {name!r} appartient déjà à une autre émission")
-            matches = [path for path in self.root.iterdir()
-                       if unicodedata.normalize("NFC", path.name) == name]
-            if len(matches) > 1:
-                raise ValueError(f"Plusieurs dossiers correspondent à {name!r}")
-            output = matches[0] if matches else self.root / name
-            output.mkdir(parents=True, exist_ok=True)
-            marker = self.work / "directory"
-            if marker.exists() and unicodedata.normalize("NFC", marker.read_text(encoding="utf-8")) != name:
-                raise ValueError(f"Le nom de l'émission {self.show} a changé; migration manuelle requise")
-            marker.write_text(name, encoding="utf-8")
-            legacy = self.root / self.show
-            if legacy != output:
-                for episode_id, entry in self.state["entries"].items():
-                    old = legacy / f'{entry["date"]}-{episode_id}.mp3'
-                    new = output / old.name
-                    if not old.is_file():
-                        continue
-                    move_no_replace(old, new)
-            self.output = output
+        matches = [path for path in self.root.iterdir()
+                   if unicodedata.normalize("NFC", path.name) == name]
+        if len(matches) > 1:
+            raise ValueError(f"Plusieurs dossiers correspondent à {name!r}")
+        self.output = matches[0] if matches else self.root / name
+        self.output.mkdir(parents=True, exist_ok=True)
 
     def save(self) -> None:
         temp = self.index.with_suffix(".tmp")
