@@ -1,7 +1,7 @@
 # OhLibre
 
-- Ce projet récupère les épisodes OHdio accessibles sans authentification. Ne pas contourner les restrictions d'accès. L'ancien projet et le crontab servent uniquement de référence.
-- Configurer les émissions (`6056`, `12879`, `3858`, `302`, `3855`, `52`) et le chemin hôte dans Docker Compose. Remplacer le nom de compte Docker Hub avant `docker compose up`.
+- Ce projet récupère les épisodes OHdio accessibles sans authentification. Ne pas contourner les restrictions d'accès.
+- Configurer les émissions (`6056`, `12879`, `3858`, `302`, `3855`, `52`) et le chemin hôte dans Docker Compose.
 - Garder séparés le fournisseur OHdio, le calendrier en `America/Toronto` et la publication audio avec FFmpeg.
 - Vérifier les émissions programmées toutes les cinq minutes après la fin du segment attendu; pour les balados sans horaire, vérifier quatre fois par jour.
 - Publier le premier segment disponible, puis remplacer atomiquement le même fichier par la version fusionnée dans l'ordre de diffusion. Persister les identifiants des épisodes et segments; ignorer les rediffusions détectables.

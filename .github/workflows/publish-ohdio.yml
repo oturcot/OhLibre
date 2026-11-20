@@ -80,7 +80,7 @@ jobs:
           mkdir -p release-assets
           bash .github/scripts/local-compose.sh docker-compose.yml > "$RUNNER_TEMP/local-compose.yml"
           bash .github/scripts/registry-compose.sh "$RUNNER_TEMP/local-compose.yml" \
-            "$DOCKERHUB_USERNAME" > release-assets/docker-compose.yml
+            "$DOCKERHUB_USERNAME" "$VERSION" > release-assets/docker-compose.yml
           (cd release-assets && sha256sum docker-compose.yml > SHA256SUMS)
           if release="$(gh api "repos/$GITHUB_REPOSITORY/releases/tags/$tag" 2>"$RUNNER_TEMP/release-error")"; then
             release_draft="$(jq -r '.draft' <<< "$release")"

@@ -50,11 +50,12 @@ jobs:
       - name: Verify the writable host bind mount
         run: |
           mount_root="$(mktemp -d "$PWD/.bind-test.XXXXXX")"
-          export PODCAST_DIR="$mount_root/podcast library"
-          trap 'rm -f "$PODCAST_DIR/from-host" "$PODCAST_DIR/from-container"; rmdir "$PODCAST_DIR" "$mount_root"' EXIT
-          mkdir -p "$PODCAST_DIR"
-          printf 'host\n' > "$PODCAST_DIR/from-host"
-          bash .github/scripts/local-compose.sh docker-compose.yml > "$RUNNER_TEMP/local-compose.yml"
+          export BIND_TEST_DIR="$mount_root/podcast library"
+          trap 'rm -f "$BIND_TEST_DIR/from-host" "$BIND_TEST_DIR/from-container"; rmdir "$BIND_TEST_DIR" "$mount_root"' EXIT
+          mkdir -p "$BIND_TEST_DIR"
+          printf 'host\n' > "$BIND_TEST_DIR/from-host"
+          bash .github/scripts/local-compose.sh docker-compose.yml |
+            sed 's|^        source: ./podcasts .*|        source: ${BIND_TEST_DIR:?}|' > "$RUNNER_TEMP/local-compose.yml"
           docker compose -f "$RUNNER_TEMP/local-compose.yml" run --rm --no-deps --entrypoint sh ohdio \
             -ec 'test "$(cat /podcasts/from-host)" = host; printf "container\n" > /podcasts/from-container'
-          test "$(cat "$PODCAST_DIR/from-container")" = container
+          test "$(cat "$BIND_TEST_DIR/from-container")" = container
