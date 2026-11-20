@@ -1,0 +1,14 @@
+services:
+  ohdio:
+    image: radio-canada-podcast:local
+    build: .
+    pull_policy: build
+    init: true
+    restart: unless-stopped
+    environment:
+      OHDIO_SHOWS: "6056,12879,3858,302,3855,52"
+      OHDIO_OUTPUT: /podcasts
+    volumes:
+      - type: bind
+        source: ${PODCAST_DIR:-./podcasts}
+        target: /podcasts

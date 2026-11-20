@@ -1,0 +1,71 @@
+name: Publish private OHdio release
+
+on:
+  workflow_call:
+    inputs:
+      version:
+        type: string
+        default: ''
+
+permissions:
+  contents: read
+
+jobs:
+  archives:
+    if: github.event.repository.private
+    uses: ./.github/workflows/package-ohdio.yml
+  release:
+    needs: archives
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    permissions:
+      contents: write
+    concurrency:
+      group: ohdio-release-${{ inputs.version || github.run_id }}
+      cancel-in-progress: false
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+      - uses: actions/download-artifact@v8
+        with:
+          pattern: ohdio-linux-*
+          merge-multiple: true
+          path: release-assets
+      - name: Publish to the private GitHub repository
+        env:
+          GH_TOKEN: ${{ github.token }}
+          VERSION: ${{ inputs.version }}
+        run: |
+          set -euo pipefail
+          [[ "$(gh api "repos/$GITHUB_REPOSITORY" --jq .private)" == true ]]
+          flags=()
+          base="$VERSION"
+          if [[ -z "$base" ]]; then
+            base="$(tr -d '[:space:]' < .github/NEXT_VERSION)"
+            flags+=(--prerelease)
+          fi
+          if [[ ! "$base" =~ ^(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)$ ]]; then
+            printf 'Invalid release version: %s\n' "$base" >&2
+            exit 1
+          fi
+          tag="${VERSION:-$base-beta.$GITHUB_RUN_NUMBER}"
+          existing="$(gh api "repos/$GITHUB_REPOSITORY/git/matching-refs/tags/$tag" \
+            --jq ".[] | select(.ref == \"refs/tags/$tag\") | .ref")"
+          if [[ -n "$existing" ]]; then
+            commit="$(gh api "repos/$GITHUB_REPOSITORY/commits/$tag" --jq .sha)"
+            if [[ "$commit" != "$GITHUB_SHA" ]]; then
+              printf 'Tag %s already points at %s, expected %s\n' "$tag" "$commit" "$GITHUB_SHA" >&2
+              exit 1
+            fi
+            flags+=(--verify-tag)
+          fi
+          if gh release view "$tag" --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1; then
+            echo "Release $tag already exists; no files were replaced."
+            exit 0
+          fi
+          sed -e '/^    build: /d' -e 's/    pull_policy: build/    pull_policy: never/' \
+            compose.yml > release-assets/compose.yml
+          (cd release-assets && sha256sum radio-canada-podcast-linux-{amd64,arm64}.tar.gz compose.yml > SHA256SUMS)
+          gh release create "$tag" release-assets/* --repo "$GITHUB_REPOSITORY" \
+            --target "$GITHUB_SHA" --title "$tag" --generate-notes "${flags[@]}"

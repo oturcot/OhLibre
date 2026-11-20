@@ -1,245 +1,26 @@
 name: CI
 
 on:
-  push:
-    branches:
-      - main
-      - stable
   pull_request:
-    types:
-      - opened
-      - synchronize
-      - reopened
-      - ready_for_review
-  pull_request_review:
-    types:
-      - submitted
+    branches: [main, stable]
+  push:
+    branches: [main, stable]
+  merge_group:
+  workflow_dispatch:
 
 permissions:
   contents: read
 
-concurrency:
-  group: >-
-    ${{ github.workflow }}-${{ github.event_name == 'pull_request' &&
-      !((github.event.action == 'reopened' || github.event.action == 'ready_for_review') &&
-        github.event.pull_request.user.login != github.repository_owner &&
-        github.event.pull_request.user.login != 'dependabot[bot]' &&
-        !(github.event.pull_request.head.repo.full_name == github.repository &&
-          (github.event.pull_request.head.ref == 'automation/update-container-dependencies' ||
-           github.event.pull_request.head.ref == 'automation/promote-dependency-release'))) &&
-      format('pr-{0}', github.event.pull_request.number) ||
-      github.event_name == 'pull_request_review' &&
-      github.event.review.state == 'approved' &&
-      github.event.review.commit_id == github.event.pull_request.head.sha &&
-      github.event.review.user.login == github.repository_owner &&
-      github.event.pull_request.user.login != github.repository_owner &&
-      github.event.pull_request.user.login != 'dependabot[bot]' &&
-      !(github.event.pull_request.head.repo.full_name == github.repository &&
-        (github.event.pull_request.head.ref == 'automation/update-container-dependencies' ||
-         github.event.pull_request.head.ref == 'automation/promote-dependency-release')) &&
-      format('pr-{0}', github.event.pull_request.number) || github.run_id }}
-  cancel-in-progress: ${{ github.event_name != 'push' }}
-
 jobs:
-  public-smoke-test:
-    if: >-
-      github.event_name == 'push' ||
-      (
-        github.event_name == 'pull_request' &&
-        (
-          github.event.pull_request.user.login == github.repository_owner ||
-          github.event.pull_request.user.login == 'dependabot[bot]' ||
-          (
-            github.event.pull_request.head.repo.full_name == github.repository &&
-            github.event.pull_request.head.ref == 'automation/update-container-dependencies'
-          ) ||
-          (
-            github.event.pull_request.head.repo.full_name == github.repository &&
-            github.event.pull_request.head.ref == 'automation/promote-dependency-release'
-          )
-        )
-      ) ||
-      (
-        github.event_name == 'pull_request_review' &&
-        github.event.review.state == 'approved' &&
-        github.event.review.commit_id == github.event.pull_request.head.sha &&
-        github.event.review.user.login == github.repository_owner
-      )
-    runs-on: ubuntu-latest
-    timeout-minutes: 30
-
-    steps:
-      - name: Checkout
-        uses: actions/checkout@v7
-        with:
-          persist-credentials: false
-          ref: ${{ github.event.review.commit_id || github.event.pull_request.head.sha || github.sha }}
-
-      - name: Build image without Cisco assets
-        run: docker build --platform linux/amd64 --file dockerfile --tag iol-test .
-
-      - name: Verify image tools and uBridge hypervisor
-        run: |
-          docker run --rm --privileged --name iol-smoke --entrypoint /bin/bash iol-test -euo pipefail -c '
-            bash -n /entrypoint.sh
-            for tool in ubridge ip bridge tcpdump tmux telnet; do
-              command -v "$tool"
-            done
-            ubridge -v
-            ip link show lo
-            ubridge -H 9000 >/tmp/ubridge.log 2>&1 &
-            ubridge_pid=$!
-            trap "kill \"$ubridge_pid\" 2>/dev/null || true" EXIT
-            for attempt in {1..20}; do
-              if (echo > /dev/tcp/127.0.0.1/9000) 2>/dev/null; then
-                exit 0
-              fi
-              sleep 1
-            done
-            cat /tmp/ubridge.log
-            exit 1
-          '
-
-  local-cisco-integration-test:
-    if: >-
-      (
-        github.event_name == 'push' &&
-        github.ref == 'refs/heads/main'
-      ) ||
-      (
-        github.event_name == 'pull_request' &&
-        github.event.pull_request.head.repo.full_name == github.repository &&
-        (
-          github.event.pull_request.user.login == github.repository_owner ||
-          github.event.pull_request.user.login == 'dependabot[bot]' ||
-          github.event.pull_request.head.ref == 'automation/update-container-dependencies' ||
-          github.event.pull_request.head.ref == 'automation/promote-dependency-release'
-        )
-      ) ||
-      (
-        github.event_name == 'pull_request_review' &&
-        github.event.review.state == 'approved' &&
-        github.event.review.commit_id == github.event.pull_request.head.sha &&
-        github.event.review.user.login == github.repository_owner &&
-        github.event.pull_request.head.repo.full_name == github.repository &&
-        (
-          github.event.pull_request.user.login == github.repository_owner ||
-          github.event.pull_request.user.login == 'dependabot[bot]' ||
-          github.event.pull_request.head.ref == 'automation/update-container-dependencies' ||
-          github.event.pull_request.head.ref == 'automation/promote-dependency-release'
-        )
-      )
-    runs-on: [self-hosted, macOS, ARM64]
-    timeout-minutes: 30
-    outputs:
-      image_tag: ${{ steps.save-image.outputs.image_tag }}
-    env:
-      IOS_IMAGE_DIR: ${{ vars.IOS_IMAGE_DIR || format('{0}/ios-images', github.workspace) }}
-      IOS_LICENSE_DIR: ${{ vars.IOS_LICENSE_DIR || format('{0}/ios-licence', github.workspace) }}
-      IOS_IMAGE_FILE: i86bi_linux-adventerprisek9-ms.155-2.T.bin
-
-    steps:
-      - name: Checkout
-        uses: actions/checkout@v7
-        with:
-          clean: false
-          persist-credentials: false
-          ref: ${{ github.event.pull_request.head.sha || github.sha }}
-
-      - name: Test end-to-end Cisco Layer 3 routing
-        env:
-          IOL_BASE_IMAGE_TAG: oturcot/cisco-iol:tested-${{ github.run_id }}-${{ github.run_attempt }}
-          PRESERVE_BASE_IMAGE: ${{ github.event_name == 'push' && github.ref == 'refs/heads/main' }}
-        run: bash .github/scripts/test-cisco-compose.sh
-
-      - name: Save tested beta image
-        id: save-image
-        if: github.event_name == 'push' && github.ref == 'refs/heads/main'
-        env:
-          IMAGE_TAG: oturcot/cisco-iol:tested-${{ github.run_id }}-${{ github.run_attempt }}
-        run: |
-          docker image save "$IMAGE_TAG" --output "$RUNNER_TEMP/cisco-iol-image.tar"
-          printf '%s\n' "$IMAGE_TAG" > "$RUNNER_TEMP/cisco-iol-image-tag.txt"
-          echo "image_tag=$IMAGE_TAG" >> "$GITHUB_OUTPUT"
-
-      - uses: actions/upload-artifact@v4
-        if: github.event_name == 'push' && github.ref == 'refs/heads/main'
-        with:
-          name: tested-beta-image
-          path: |
-            ${{ runner.temp }}/cisco-iol-image.tar
-            ${{ runner.temp }}/cisco-iol-image-tag.txt
-          overwrite: true
-          retention-days: 30
-
-      - name: Remove tested image from runner
-        if: always()
-        env:
-          IMAGE_TAG: oturcot/cisco-iol:tested-${{ github.run_id }}-${{ github.run_attempt }}
-        run: docker image rm "$IMAGE_TAG" >/dev/null 2>&1 || true
-
-  report-gated-tests:
-    name: CI test outcome
-    if: >-
-      always() &&
-      (
-        github.event_name == 'pull_request' ||
-        github.event_name == 'pull_request_review'
-      )
-    needs:
-      - public-smoke-test
-      - local-cisco-integration-test
-    runs-on: ubuntu-latest
-    timeout-minutes: 10
-
-    steps:
-      - name: Report the gated test results
-        env:
-          PUBLIC_RESULT: ${{ needs.public-smoke-test.result }}
-          LOCAL_RESULT: ${{ needs.local-cisco-integration-test.result }}
-          CISCO_REQUIRED: >-
-            ${{ github.event.pull_request.head.repo.full_name == github.repository &&
-              (github.event.pull_request.user.login == github.repository_owner ||
-               github.event.pull_request.user.login == 'dependabot[bot]' ||
-               github.event.pull_request.head.ref == 'automation/update-container-dependencies' ||
-               github.event.pull_request.head.ref == 'automation/promote-dependency-release') }}
-        if: >-
-          (
-            github.event_name == 'pull_request' &&
-            (
-              github.event.pull_request.user.login == github.repository_owner ||
-              github.event.pull_request.user.login == 'dependabot[bot]' ||
-              (
-                github.event.pull_request.head.repo.full_name == github.repository &&
-                github.event.pull_request.head.ref == 'automation/update-container-dependencies'
-              ) ||
-              (
-                github.event.pull_request.head.repo.full_name == github.repository &&
-                github.event.pull_request.head.ref == 'automation/promote-dependency-release'
-              )
-            )
-          ) ||
-          (
-            github.event_name == 'pull_request_review' &&
-            github.event.review.state == 'approved' &&
-            github.event.review.commit_id == github.event.pull_request.head.sha &&
-            github.event.review.user.login == github.repository_owner
-          )
-        run: |
-          echo "GitHub smoke test: $PUBLIC_RESULT"
-          echo "Local Cisco integration test: $LOCAL_RESULT"
-
-          if [[ "$PUBLIC_RESULT" != success ]]; then
-            echo "The GitHub smoke test did not pass."
-            exit 1
-          fi
-
-          if [[ "$CISCO_REQUIRED" == true && "$LOCAL_RESULT" != success ]]; then
-            echo "The required local Cisco integration test did not pass."
-            exit 1
-          fi
-
-          if [[ "$CISCO_REQUIRED" != true && "$LOCAL_RESULT" != success && "$LOCAL_RESULT" != skipped ]]; then
-            echo "The local Cisco integration test did not pass."
-            exit 1
-          fi
+  ohdio:
+    uses: ./.github/workflows/test-ohdio.yml
+  archives:
+    if: github.event_name != 'push'
+    needs: ohdio
+    uses: ./.github/workflows/package-ohdio.yml
+  beta:
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    needs: ohdio
+    uses: ./.github/workflows/publish-ohdio.yml
+    permissions:
+      contents: write
