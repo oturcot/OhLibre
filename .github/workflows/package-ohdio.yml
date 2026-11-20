@@ -31,7 +31,7 @@ jobs:
           ARCH: ${{ matrix.arch }}
         run: |
           set -euo pipefail
-          docker compose build --pull
+          docker build --pull -t radio-canada-podcast:local .
           archive="radio-canada-podcast-linux-$ARCH.tar.gz"
           docker image save radio-canada-podcast:local | gzip -c > "$archive"
           docker image rm radio-canada-podcast:local
@@ -39,8 +39,7 @@ jobs:
           docker run --rm -e OHDIO_LIVE_TEST=1 \
             -v "$PWD/tests:/app/tests:ro" --entrypoint python \
             radio-canada-podcast:local -m unittest discover -s tests -v
-          sed -e '/^    build: /d' -e 's/    pull_policy: build/    pull_policy: never/' \
-            docker-compose.yml > release-compose.yml
+          bash .github/scripts/local-compose.sh docker-compose.yml > release-compose.yml
           docker compose -f release-compose.yml config -q
           docker compose -f release-compose.yml run --rm --no-deps ohdio --help
           bash .github/scripts/registry-compose.sh release-compose.yml "${GITHUB_REPOSITORY_OWNER,,}" > registry-compose.yml
