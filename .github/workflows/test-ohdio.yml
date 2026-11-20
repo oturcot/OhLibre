@@ -6,12 +6,33 @@ on:
       ref:
         type: string
         default: ''
+      test-images:
+        type: boolean
+        default: true
 
 permissions:
   contents: read
 
 jobs:
   test:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          ref: ${{ inputs.ref || github.sha }}
+          persist-credentials: false
+      - uses: actions/setup-python@v6
+        with:
+          python-version: '3.13'
+      - run: |
+          bash .github/scripts/test-release-version.sh
+          bash .github/scripts/test-publish-ghcr.sh
+          docker compose config -q
+          OHDIO_LIVE_TEST=1 python -m unittest discover -s tests -v
+  image:
+    if: inputs.test-images
+    needs: test
     runs-on: [self-hosted, Linux, X64]
     timeout-minutes: 20
     steps:
@@ -19,17 +40,10 @@ jobs:
         with:
           ref: ${{ inputs.ref || github.sha }}
           persist-credentials: false
-      - uses: dcarbone/install-jq-action@v4.0.1
       - run: |
-          bash .github/scripts/test-release-version.sh
-          bash .github/scripts/test-publish-ghcr.sh
-          docker compose config -q
           docker build --pull -t radio-canada-podcast:local .
           docker run --rm --entrypoint python radio-canada-podcast:local -c \
             'from datetime import datetime, timezone; winter = datetime(2026, 1, 1, 12, tzinfo=timezone.utc).astimezone(); summer = datetime(2026, 7, 1, 12, tzinfo=timezone.utc).astimezone(); assert (winter.hour, summer.hour) == (7, 8), (winter, summer)'
-          docker run --rm -e OHDIO_LIVE_TEST=1 \
-            -v "$PWD/tests:/app/tests:ro" --entrypoint python \
-            radio-canada-podcast:local -m unittest discover -s tests -v
       - name: Verify the writable host bind mount
         run: |
           mount_root="$(mktemp -d "$PWD/.bind-test.XXXXXX")"
