@@ -78,8 +78,7 @@ jobs:
             echo "Expected a reserved tag for $tag." >&2
             exit 1
           fi
-          sed -e '/^    build: /d' -e 's/    pull_policy: build/    pull_policy: never/' \
-            docker-compose.yml > release-assets/compose.yml
+          bash .github/scripts/local-compose.sh docker-compose.yml > release-assets/compose.yml
           (cd release-assets && sha256sum radio-canada-podcast-linux-{amd64,arm64}.tar.gz compose.yml > SHA256SUMS)
           bash .github/scripts/registry-compose.sh release-assets/compose.yml \
             "${GITHUB_REPOSITORY_OWNER,,}" > release-assets/docker-compose.ghcr.yml
