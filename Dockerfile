@@ -1,4 +1,4 @@
-FROM python:3.13-slim-bookworm
+FROM python:latest
 RUN apt-get update \
     && apt-get install -y --no-install-recommends ca-certificates ffmpeg tzdata \
     && rm -rf /var/lib/apt/lists/*

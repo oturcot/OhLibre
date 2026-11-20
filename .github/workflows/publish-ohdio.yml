@@ -5,20 +5,25 @@ on:
     inputs:
       version:
         type: string
-        default: ''
+        required: true
+      ref:
+        type: string
+        required: true
+      run_id:
+        type: string
+        required: true
 
 permissions:
-  contents: read
+  actions: read
+  contents: write
+  packages: write
 
 jobs:
-  archives:
-    if: github.event.repository.private
-    uses: ./.github/workflows/package-ohdio.yml
   release:
-    needs: archives
     runs-on: ubuntu-latest
     timeout-minutes: 15
     permissions:
+      actions: read
       contents: write
     outputs:
       version: ${{ steps.publish.outputs.version }}
@@ -28,56 +33,66 @@ jobs:
     steps:
       - uses: actions/checkout@v7
         with:
+          ref: ${{ inputs.ref }}
           persist-credentials: false
       - uses: actions/download-artifact@v8
         with:
           pattern: ohdio-linux-*
           merge-multiple: true
           path: release-assets
+          run-id: ${{ inputs.run_id }}
+          github-token: ${{ github.token }}
       - name: Publish to the private GitHub repository
         id: publish
         env:
           GH_TOKEN: ${{ github.token }}
           VERSION: ${{ inputs.version }}
+          TARGET_SHA: ${{ inputs.ref }}
         run: |
           set -euo pipefail
           [[ "$(gh api "repos/$GITHUB_REPOSITORY" --jq .private)" == true ]]
+          [[ "$TARGET_SHA" =~ ^[0-9a-f]{40}$ ]]
           flags=()
           base="$VERSION"
-          if [[ -z "$base" ]]; then
-            base="$(tr -d '[:space:]' < .github/NEXT_VERSION)"
+          if [[ "$base" == *-beta.* ]]; then
+            base="${base%-beta.*}"
             flags+=(--prerelease)
           fi
           if [[ ! "$base" =~ ^(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)$ ]]; then
             printf 'Invalid release version: %s\n' "$base" >&2
             exit 1
           fi
-          tag="${VERSION:-$base-beta.$GITHUB_RUN_NUMBER}"
+          [[ "$VERSION" =~ ^[0-9]+\.[0-9]+\.[0-9]+(-beta\.[0-9]+)?$ ]]
+          tag="$VERSION"
           echo "version=$tag" >> "$GITHUB_OUTPUT"
           existing="$(gh api "repos/$GITHUB_REPOSITORY/git/matching-refs/tags/$tag" \
             --jq ".[] | select(.ref == \"refs/tags/$tag\") | .ref")"
           if [[ -n "$existing" ]]; then
             commit="$(gh api "repos/$GITHUB_REPOSITORY/commits/$tag" --jq .sha)"
-            if [[ "$commit" != "$GITHUB_SHA" ]]; then
-              printf 'Tag %s already points at %s, expected %s\n' "$tag" "$commit" "$GITHUB_SHA" >&2
+            if [[ "$commit" != "$TARGET_SHA" ]]; then
+              printf 'Tag %s already points at %s, expected %s\n' "$tag" "$commit" "$TARGET_SHA" >&2
               exit 1
             fi
             flags+=(--verify-tag)
+          else
+            echo "Expected a reserved tag for $tag." >&2
+            exit 1
           fi
-          if release_draft="$(gh release view "$tag" --repo "$GITHUB_REPOSITORY" --json isDraft --jq .isDraft 2>/dev/null)"; then
+          sed -e '/^    build: /d' -e 's/    pull_policy: build/    pull_policy: never/' \
+            docker-compose.yml > release-assets/compose.yml
+          (cd release-assets && sha256sum radio-canada-podcast-linux-{amd64,arm64}.tar.gz compose.yml > SHA256SUMS)
+          bash .github/scripts/registry-compose.sh release-assets/compose.yml \
+            "${GITHUB_REPOSITORY_OWNER,,}" > release-assets/docker-compose.ghcr.yml
+          (cd release-assets && sha256sum docker-compose.ghcr.yml >> SHA256SUMS)
+          if release="$(gh api "repos/$GITHUB_REPOSITORY/releases/tags/$tag" 2>"$RUNNER_TEMP/release-error")"; then
+            release_draft="$(jq -r '.draft' <<< "$release")"
             if [[ "$release_draft" == true ]]; then
-              draft_target="$(gh release view "$tag" --repo "$GITHUB_REPOSITORY" \
-                --json targetCommitish --jq .targetCommitish)"
-              if [[ "$draft_target" != "$GITHUB_SHA" ]]; then
-                printf 'Draft release %s targets %s, expected %s\n' "$tag" "$draft_target" "$GITHUB_SHA" >&2
-                exit 1
-              fi
-              echo "Release $tag is still a draft; GHCR publication will validate and finalize it."
-            else
-              echo "Release $tag is already published; validating its assets."
+              gh release upload "$tag" release-assets/* --repo "$GITHUB_REPOSITORY" --clobber
+              echo "Reconciled the draft release assets for $tag."
+              exit 0
             fi
+            echo "Release $tag is already published; validating its assets."
             assets=(radio-canada-podcast-linux-{amd64,arm64}.tar.gz compose.yml docker-compose.ghcr.yml SHA256SUMS)
-            release="$(gh api "repos/$GITHUB_REPOSITORY/releases/tags/$tag")"
             problems="$(jq -r '
               . as $release |
               ($ARGS.positional[] as $name |
@@ -90,17 +105,13 @@ jobs:
             fi
             echo "Release $tag contains all expected assets; no files were replaced."
             exit 0
+          elif ! grep -Fq '(HTTP 404)' "$RUNNER_TEMP/release-error"; then
+            cat "$RUNNER_TEMP/release-error" >&2
+            exit 1
           fi
-          sed -e '/^    build: /d' -e 's/    pull_policy: build/    pull_policy: never/' \
-            docker-compose.yml > release-assets/compose.yml
-          (cd release-assets && sha256sum radio-canada-podcast-linux-{amd64,arm64}.tar.gz compose.yml > SHA256SUMS)
-          bash .github/scripts/registry-compose.sh release-assets/compose.yml \
-            "${GITHUB_REPOSITORY_OWNER,,}" > release-assets/docker-compose.ghcr.yml
-          (cd release-assets && sha256sum docker-compose.ghcr.yml >> SHA256SUMS)
           gh release create "$tag" release-assets/* --repo "$GITHUB_REPOSITORY" \
-            --target "$GITHUB_SHA" --title "$tag" --generate-notes --draft "${flags[@]}"
+            --target "$TARGET_SHA" --title "$tag" --generate-notes --draft "${flags[@]}"
   ghcr:
-    if: github.event.repository.private
     needs: release
     runs-on: ubuntu-latest
     timeout-minutes: 20
@@ -108,12 +119,13 @@ jobs:
       contents: write
       packages: write
     concurrency:
-      group: ghcr-ohdio-${{ inputs.version == '' && 'beta' || 'stable' }}
+      group: ghcr-ohdio-${{ contains(inputs.version, '-beta.') && 'beta' || 'stable' }}
       cancel-in-progress: false
       queue: max
     steps:
       - uses: actions/checkout@v7
         with:
+          ref: ${{ inputs.ref }}
           persist-credentials: false
       - name: Download the published release assets
         env:
@@ -145,7 +157,6 @@ jobs:
             "ghcr.io/${GITHUB_REPOSITORY_OWNER,,}/radio-canada-podcast" "$VERSION" \
             release-assets "$current_channel_version"
   publish:
-    if: github.event.repository.private
     needs: [release, ghcr]
     runs-on: ubuntu-latest
     timeout-minutes: 5
