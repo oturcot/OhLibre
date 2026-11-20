@@ -48,7 +48,10 @@ ou au plus tard à minuit. Au démarrage, le conteneur vérifie aussi le dernier
 créneau passé. Il ne fait pas de rattrapage systématique de tous les créneaux
 manqués pendant un arrêt prolongé.
 
-Le fichier `<date>-<identifiant>.mp3` est visible dès le premier segment.
+Le fichier `AAAA-MM-JJ_titre de l'épisode.mp3` est visible dès le premier
+segment. Les caractères incompatibles avec les noms de fichiers sont retirés
+du nom; le titre dans les métadonnées reste celui d'OHdio. Les anciens noms
+ne sont pas modifiés.
 FFmpeg assemble les segments dans l'ordre annoncé par OHdio et remplace ce
 même fichier sans exposer de fichier en cours d'écriture. Le serveur doit
 rescanner le fichier pour voir sa nouvelle durée; un fichier déjà téléchargé
