@@ -83,7 +83,9 @@ caché `.ohdio`, qui sert à la déduplication et à la reprise.
 ## Tester
 
 `docker compose logs -f ohdio` affiche les vérifications, téléchargements,
-publications et erreurs du script.
+publications et erreurs du script. Leurs horodatages suivent l'heure de
+Montréal (`America/Toronto`), y compris le passage entre l'heure normale et
+l'heure avancée.
 
 Avec Python 3.13+ et FFmpeg (dont `ffprobe`) :
 
