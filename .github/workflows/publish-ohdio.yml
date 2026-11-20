@@ -74,12 +74,25 @@ jobs:
               fi
               echo "Release $tag is still a draft; GHCR publication will validate and finalize it."
             else
-              echo "Release $tag is already published; no files were replaced."
+              echo "Release $tag is already published; validating its assets."
             fi
+            assets=(radio-canada-podcast-linux-{amd64,arm64}.tar.gz compose.yml docker-compose.ghcr.yml SHA256SUMS)
+            release="$(gh api "repos/$GITHUB_REPOSITORY/releases/tags/$tag")"
+            problems="$(jq -r '
+              . as $release |
+              ($ARGS.positional[] as $name |
+                if any($release.assets[]; .name == $name and .state == "uploaded")
+                then empty else "\($name): missing or not uploaded" end)
+            ' --args "${assets[@]}" <<< "$release")"
+            if [[ -n "$problems" ]]; then
+              printf 'Release %s is incomplete; no files were changed:\n%s\n' "$tag" "$problems" >&2
+              exit 1
+            fi
+            echo "Release $tag contains all expected assets; no files were replaced."
             exit 0
           fi
           sed -e '/^    build: /d' -e 's/    pull_policy: build/    pull_policy: never/' \
-            compose.yml > release-assets/compose.yml
+            docker-compose.yml > release-assets/compose.yml
           (cd release-assets && sha256sum radio-canada-podcast-linux-{amd64,arm64}.tar.gz compose.yml > SHA256SUMS)
           bash .github/scripts/registry-compose.sh release-assets/compose.yml \
             "${GITHUB_REPOSITORY_OWNER,,}" > release-assets/docker-compose.ghcr.yml
