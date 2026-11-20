@@ -15,12 +15,13 @@ docker compose logs -f ohdio
 ```
 
 Le dossier de stockage par défaut est **`./podcasts`**, à côté de
-[`docker-compose.yml`](./docker-compose.yml), détecté sans option `-f`. Pour le modifier, change `volumes.source` dans
-le Compose ou crée un fichier `.env` avec `PODCAST_DIR=/chemin/vers/Podcasts`.
-Le conteneur y accède sous `/podcasts`. Il crée un sous-dossier par numéro
-d'émission; configure le serveur pour lire les MP3, pas le dossier caché
-`.ohdio`. Conserve ce dossier caché lors des migrations : il contient l'index
-des épisodes et les segments en attente.
+[`docker-compose.yml`](./docker-compose.yml), détecté sans option `-f`.
+Pour le modifier, change `volumes.source` dans le Compose ou crée un fichier
+`.env` avec `PODCAST_DIR=/chemin/vers/Podcasts`. Le conteneur y accède sous
+`/podcasts`. Il crée un sous-dossier par numéro d'émission; configure le
+serveur pour lire les MP3, pas le dossier caché `.ohdio`. Conserve ce dossier
+caché lors des migrations : il contient l'index des épisodes et les segments
+en attente.
 
 | ID dans `OHDIO_SHOWS` | Émission | Première vérification (heure de Toronto) |
 | --- | --- | --- |
@@ -51,6 +52,20 @@ sur un appareil n'est pas remplacé automatiquement. Les heures ID3 des
 Les rediffusions signalées par OHdio ou qui réutilisent un identifiant audio
 déjà publié sont ignorées; une rediffusion non signalée avec de nouveaux
 identifiants ne peut pas être reconnue par ce mécanisme.
+
+## Monter un dossier hôte existant
+
+Copie [`.env.example`](./.env.example) en `.env` à côté du Compose si tu
+veux stocker les épisodes ailleurs. Indique le chemin sur la machine qui
+exécute Docker, par exemple :
+
+```dotenv
+PODCAST_DIR="/mnt/media/Mes balados"
+```
+
+Le dossier est monté en lecture et écriture sous `/podcasts`. Il reste
+sur l'hôte lorsque le conteneur est recréé; ne supprime pas le sous-dossier
+caché `.ohdio`, qui sert à la déduplication et à la reprise.
 
 ## Tester
 
