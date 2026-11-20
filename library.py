@@ -31,12 +31,14 @@ def fetch(media_id: str, path: Path) -> bool:
     if url is None:
         logging.info("Média %s pas encore accessible", media_id)
         return False
+    logging.info("Téléchargement du média %s", media_id)
     temp = path.with_suffix(".tmp")
     try:
         ffmpeg("-rw_timeout", "20000000", "-i", url, "-map", "0:a:0", "-map_metadata", "-1",
                "-ac", "2", "-ar", "44100", "-c:a", "libmp3lame", "-b:a", "128k",
                "-write_xing", "0", "-f", "mp3", str(temp))
         temp.replace(path)
+        logging.info("Média %s téléchargé", media_id)
     finally:
         temp.unlink(missing_ok=True)
     return True

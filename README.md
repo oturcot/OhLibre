@@ -77,6 +77,9 @@ caché `.ohdio`, qui sert à la déduplication et à la reprise.
 
 ## Tester
 
+`docker compose logs -f ohdio` affiche les vérifications, téléchargements,
+publications et erreurs du script.
+
 Avec Python 3.13+ et FFmpeg (dont `ffprobe`) :
 
 ```sh
