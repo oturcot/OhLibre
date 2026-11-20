@@ -1,0 +1,140 @@
+name: Publish main beta
+
+on:
+  workflow_run:
+    workflows: [CI]
+    types: [completed]
+  schedule:
+    - cron: '17 * * * *'
+  workflow_dispatch:
+
+permissions:
+  actions: read
+  contents: write
+  packages: write
+
+concurrency:
+  group: publish-main-beta
+  cancel-in-progress: false
+  queue: max
+
+jobs:
+  select:
+    if: >-
+      (github.event_name == 'workflow_run' && github.event.workflow_run.event == 'push' &&
+       github.event.workflow_run.head_branch == 'main') ||
+      (github.event_name != 'workflow_run' && github.ref == 'refs/heads/main')
+    runs-on: ubuntu-latest
+    outputs:
+      sha: ${{ steps.select.outputs.sha }}
+      run_id: ${{ steps.select.outputs.run_id }}
+      version: ${{ steps.reserve.outputs.version }}
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          ref: main
+          fetch-depth: 0
+          persist-credentials: false
+      - id: select
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          gh api --paginate "repos/$GITHUB_REPOSITORY/actions/workflows/ci.yml/runs?per_page=100" \
+            --jq '.workflow_runs[] | select(.event == "push" and .head_branch == "main" and .conclusion == "success") | [.head_sha, .id] | @tsv' > "$RUNNER_TEMP/runs"
+          gh api --paginate "repos/$GITHUB_REPOSITORY/releases?per_page=100" \
+            --jq '.[] | select(.prerelease and (.draft | not)) | .tag_name' > "$RUNNER_TEMP/releases"
+          declare -A released=()
+          while IFS= read -r tag; do
+            if [[ "$tag" =~ ^[0-9]+\.[0-9]+\.[0-9]+-beta\.[0-9]+$ ]] &&
+               git rev-parse --verify "refs/tags/$tag" >/dev/null 2>&1; then
+              released["$(git rev-list -n 1 "$tag")"]=1
+            fi
+          done < "$RUNNER_TEMP/releases"
+          now="$(date +%s)"
+          enabled=false
+          while IFS= read -r sha; do
+            if [[ "$enabled" == false ]] && git cat-file -e "$sha:.github/workflows/publish-main-beta.yml" 2>/dev/null; then
+              enabled=true
+            fi
+            [[ "$enabled" == true ]] || continue
+            pending="beta-publish-pending-$sha"
+            if [[ -n "${released[$sha]:-}" ]] && ! git show-ref --verify --quiet "refs/tags/$pending"; then
+              continue
+            fi
+            deferred=false
+            while IFS= read -r tag; do
+              if [[ "$tag" =~ -([0-9]{10})$ ]] && (( now < BASH_REMATCH[1] + 3600 )); then
+                deferred=true
+              fi
+            done < <(git tag --list "beta-publish-retry-$sha-*")
+            [[ "$deferred" == false ]] || continue
+            found=false
+            while read -r run_sha run_id; do
+              [[ "$run_sha" == "$sha" ]] || continue
+              found=true
+              artifacts="$(gh api --paginate "repos/$GITHUB_REPOSITORY/actions/runs/$run_id/artifacts?per_page=100" \
+                --jq '.artifacts[] | select(.expired == false) | .name')"
+              if grep -Fxq 'ohdio-linux-amd64' <<< "$artifacts" &&
+                 grep -Fxq 'ohdio-linux-arm64' <<< "$artifacts"; then
+                echo "sha=$sha" >> "$GITHUB_OUTPUT"
+                echo "run_id=$run_id" >> "$GITHUB_OUTPUT"
+                exit 0
+              fi
+            done < "$RUNNER_TEMP/runs"
+            if [[ "$found" == true ]]; then
+              echo "::warning::Skipping $sha: both tested image artifacts are not retained."
+            fi
+          done < <(git rev-list --first-parent --reverse HEAD)
+      - id: reserve
+        if: steps.select.outputs.sha != ''
+        env:
+          GH_TOKEN: ${{ secrets.RELEASE_BOT_TOKEN }}
+          TARGET_SHA: ${{ steps.select.outputs.sha }}
+        run: |
+          set -euo pipefail
+          [[ "$TARGET_SHA" =~ ^[0-9a-f]{40}$ ]]
+          git switch --detach "$TARGET_SHA"
+          version="$(git tag --points-at "$TARGET_SHA" --list '*-beta.*' --sort=-v:refname | grep -E '^[0-9]+\.[0-9]+\.[0-9]+-beta\.[0-9]+$' | head -n 1 || true)"
+          if [[ -z "$version" ]]; then
+            latest="$(git tag --list --sort=-v:refname | grep -E '^[0-9]+\.[0-9]+\.[0-9]+$' | head -n 1 || true)"
+            version="$(bash .github/scripts/release-version.sh beta "$(tr -d '[:space:]' < .github/NEXT_VERSION)" "$latest")"
+            gh api --method POST "repos/$GITHUB_REPOSITORY/git/refs" -f "ref=refs/tags/$version" -f "sha=$TARGET_SHA"
+          fi
+          marker="beta-publish-pending-$TARGET_SHA"
+          if ! git show-ref --verify --quiet "refs/tags/$marker"; then
+            gh api --method POST "repos/$GITHUB_REPOSITORY/git/refs" -f "ref=refs/tags/$marker" -f "sha=$TARGET_SHA"
+          fi
+          echo "version=$version" >> "$GITHUB_OUTPUT"
+  publish:
+    needs: select
+    if: needs.select.outputs.sha != ''
+    uses: ./.github/workflows/publish-ohdio.yml
+    with:
+      version: ${{ needs.select.outputs.version }}
+      ref: ${{ needs.select.outputs.sha }}
+      run_id: ${{ needs.select.outputs.run_id }}
+  finish:
+    if: always() && needs.select.outputs.sha != ''
+    needs: [select, publish]
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          ref: main
+          fetch-depth: 0
+          persist-credentials: false
+      - env:
+          GH_TOKEN: ${{ secrets.RELEASE_BOT_TOKEN }}
+          SHA: ${{ needs.select.outputs.sha }}
+          RESULT: ${{ needs.publish.result }}
+        run: |
+          set -euo pipefail
+          [[ "$SHA" =~ ^[0-9a-f]{40}$ ]]
+          if [[ "$RESULT" == success ]]; then
+            gh api --method DELETE "repos/$GITHUB_REPOSITORY/git/refs/tags/beta-publish-pending-$SHA"
+          else
+            gh api --method POST "repos/$GITHUB_REPOSITORY/git/refs" \
+              -f "ref=refs/tags/beta-publish-retry-$SHA-$(date +%s)" -f "sha=$SHA"
+          fi
+          gh workflow run publish-main-beta.yml --ref main

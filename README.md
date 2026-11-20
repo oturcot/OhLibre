@@ -78,25 +78,54 @@ OHDIO_LIVE_TEST=1 python3 -m unittest discover -s tests -v
 
 Les tests hors réseau utilisent des sons générés. Les tests réseau vérifient
 les six émissions et décodent un court extrait de leurs segments sans
-conserver l'audio. GitHub Actions exécute ces tests sur les PR, après
-fusion vers `main` ou `stable`, et avant les releases. Les PR construisent
-et rechargent aussi les deux archives Docker, sans les publier en release.
-Tous ces jobs utilisent des runners GitHub hébergés.
+conserver l'audio. GitHub Actions exécute ces tests sur les PR autorisées,
+après fusion vers `main` ou `stable`, et avant les releases. Les archives
+amd64 et arm64 sont construites, rechargées et testées séparément sur des
+runners GitHub hébergés. Pour les PR d'autres personnes, une approbation
+du propriétaire sur le commit courant démarre les tests; une nouvelle
+modification nécessite une nouvelle approbation.
 
 ## Installer depuis une release privée
 
-Les commits sur `main` qui passent les tests produisent une bêta. Une
-release stable est créée après les tests sur un tag `X.Y.Z`, ou depuis
-**Actions → Release → Run workflow** sur `main` ou `stable`, avec une version
-`X.Y.Z`. Les releases du dépôt privé sont publiées via le `GITHUB_TOKEN`
-fourni par GitHub Actions. Les mêmes images sont
-également publiées dans le paquet GHCR privé décrit ci-dessous.
+Chaque commit sur `main` dont la CI réussit produit une prérelease numérotée
+et l'image `beta`. Le répartiteur reprend les publications après la CI,
+chaque heure ou via **Actions → Publish main beta**. Il ne publie que les
+deux images testées conservées par la CI pendant 30 jours; un commit sans
+ces archives est ignoré avec un avertissement. Relancer avec succès sa CI
+actuelle peut le rendre admissible. Les anciens workflows sans archives ne
+peuvent pas être récupérés ainsi. Les versions sont réservées avant publication;
+une erreur est réessayée après une heure.
 
-Lors d'une relance, une release publiée avec tous les fichiers attendus réussit
-sans rien remplacer. Un brouillon est repris seulement s'il cible le commit
-courant et contient tous les fichiers attendus; il est publié après la réussite
-de l'envoi dans GHCR. Une release incomplète ou un brouillon ciblant un autre
-commit fait échouer le workflow sans modifier la release.
+Pour une stable, ouvre une PR de `main` vers `stable`, puis fusionne-la après
+révision et CI. La fusion déclenche de nouveaux tests et publie `latest` et
+`X.Y.Z`. [`.github/NEXT_VERSION`](.github/NEXT_VERSION) définit la prochaine
+ligne `X.Y` : la version stable augmente `Z` si la ligne est inchangée, sinon
+commence à zéro. Les bêtas utilisent la prochaine version stable et un suffixe
+`-beta.N`. Pour une release indépendante d'une promotion, lance **Actions →
+Release → Run workflow** sur `stable` et choisis patch, minor, major ou une
+version custom supérieure à la dernière stable. La première release manuelle
+patch est `0.1.0`. Pour `minor` et `major`, `NEXT_VERSION` doit indiquer la
+nouvelle ligne, respectivement `X.Y.0` ou `X.0.0`.
+
+L'image de base officielle `python:latest` est volontairement flottante.
+Un contrôle quotidien détecte son nouveau digest et ouvre une PR; Dependabot
+suit aussi les actions GitHub. Après les tests, les PR automatiques sont
+fusionnées dans `main`, puis leurs seuls changements de dépendances sont
+proposés à `stable`, retestés et publiés en nouvelle version patch. Les PR
+manuelles ne sont jamais fusionnées automatiquement. Une mise à jour de
+`python:latest` peut inclure une nouvelle version majeure de Python.
+
+Les images publiées proviennent des archives testées, sans reconstruction
+après la CI. Le workflow reprend les brouillons incomplets; une release déjà
+publiée ne voit pas ses fichiers remplacés. Les releases sont finalisées
+après publication dans GHCR privé. Configurer `RELEASE_BOT_TOKEN` avec accès
+en écriture au contenu, aux PR, aux Actions et aux workflows; `GITHUB_TOKEN`
+sert à la publication GHCR. Protéger `main` et `stable` en exigeant une
+révision et le statut `CI / gated tests`, avec une dérogation pour le bot
+utilisé pour les PR de dépendances; le workflow ne fusionne automatiquement
+que ces PR. Les règles GitHub du dépôt privé doivent prendre
+en charge ces protections. Lors de la première installation, promouvoir ce
+workflow sur `stable` avant de compter sur les promotions automatiques.
 
 Depuis la même release, télécharge `compose.yml`, `SHA256SUMS` et l'archive
 correspondant à ta machine : `radio-canada-podcast-linux-amd64.tar.gz` pour
@@ -147,3 +176,6 @@ mises à jour périodiques, fais exécuter la commande suivante par `cron` ou
 ```sh
 docker compose pull && docker compose up -d --pull never
 ```
+
+
+test

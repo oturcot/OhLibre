@@ -2,6 +2,10 @@ name: Package private OHdio release
 
 on:
   workflow_call:
+    inputs:
+      ref:
+        type: string
+        default: ''
 
 permissions:
   contents: read
@@ -20,17 +24,21 @@ jobs:
     steps:
       - uses: actions/checkout@v7
         with:
+          ref: ${{ inputs.ref || github.sha }}
           persist-credentials: false
       - name: Build and verify the image archive
         env:
           ARCH: ${{ matrix.arch }}
         run: |
           set -euo pipefail
-          docker compose build
+          docker compose build --pull
           archive="radio-canada-podcast-linux-$ARCH.tar.gz"
           docker image save radio-canada-podcast:local | gzip -c > "$archive"
           docker image rm radio-canada-podcast:local
           docker image load -i "$archive"
+          docker run --rm -e OHDIO_LIVE_TEST=1 \
+            -v "$PWD/tests:/app/tests:ro" --entrypoint python \
+            radio-canada-podcast:local -m unittest discover -s tests -v
           sed -e '/^    build: /d' -e 's/    pull_policy: build/    pull_policy: never/' \
             docker-compose.yml > release-compose.yml
           docker compose -f release-compose.yml config -q
@@ -46,4 +54,4 @@ jobs:
           path: radio-canada-podcast-linux-${{ matrix.arch }}.tar.gz
           if-no-files-found: error
           compression-level: 0
-          retention-days: 3
+          retention-days: 30

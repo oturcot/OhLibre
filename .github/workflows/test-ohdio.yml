@@ -2,6 +2,10 @@ name: Test OHdio
 
 on:
   workflow_call:
+    inputs:
+      ref:
+        type: string
+        default: ''
 
 permissions:
   contents: read
@@ -13,10 +17,13 @@ jobs:
     steps:
       - uses: actions/checkout@v7
         with:
+          ref: ${{ inputs.ref || github.sha }}
           persist-credentials: false
       - run: |
+          bash .github/scripts/test-release-version.sh
+          bash .github/scripts/test-publish-ghcr.sh
           docker compose config -q
-          docker compose build
+          docker compose build --pull
           docker run --rm -e OHDIO_LIVE_TEST=1 \
             -v "$PWD/tests:/app/tests:ro" --entrypoint python \
             radio-canada-podcast:local -m unittest discover -s tests -v

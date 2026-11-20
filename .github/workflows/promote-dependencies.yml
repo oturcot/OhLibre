@@ -1,0 +1,82 @@
+name: Promote tested dependencies
+
+on:
+  pull_request:
+    branches: [main]
+    types: [closed]
+
+permissions:
+  contents: read
+  pull-requests: read
+
+concurrency:
+  group: promote-tested-dependencies
+  cancel-in-progress: false
+  queue: max
+
+jobs:
+  promote:
+    if: >-
+      github.event.pull_request.merged == true &&
+      github.event.pull_request.head.repo.full_name == github.repository &&
+      (github.event.pull_request.user.login == 'dependabot[bot]' ||
+       github.event.pull_request.head.ref == 'automation/update-python-image')
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/github-script@v9
+        id: changes
+        with:
+          script: |
+            const pr = context.payload.pull_request;
+            const files = await github.paginate(github.rest.pulls.listFiles, {
+              ...context.repo, pull_number: pr.number, per_page: 100
+            });
+            const allowed = name => pr.head.ref === "automation/update-python-image"
+              ? name === ".github/python-image-digest"
+              : name === "Dockerfile" || name.startsWith(".github/workflows/");
+            if (!files.length || files.some(f => !allowed(f.filename) ||
+              !["added", "modified", "removed"].includes(f.status)))
+              throw new Error("Unexpected files in dependency PR; refusing promotion.");
+      - uses: actions/checkout@v7
+        with:
+          ref: stable
+          path: stable
+          fetch-depth: 0
+          token: ${{ secrets.RELEASE_BOT_TOKEN }}
+          persist-credentials: true
+      - uses: actions/checkout@v7
+        with:
+          ref: ${{ github.event.pull_request.merge_commit_sha }}
+          path: source
+          fetch-depth: 0
+          persist-credentials: false
+      - name: Apply the tested dependency changes
+        env:
+          GH_TOKEN: ${{ github.token }}
+          MERGE_SHA: ${{ github.event.pull_request.merge_commit_sha }}
+        run: |
+          set -euo pipefail
+          [[ "$MERGE_SHA" =~ ^[0-9a-f]{40}$ ]]
+          number="$(gh pr list --repo "$GITHUB_REPOSITORY" --base stable \
+            --head automation/promote-dependency-release --state open --json number --jq '.[0].number // empty')"
+          if [[ -n "$number" ]]; then
+            git -C stable fetch origin "refs/pull/$number/head"
+            git -C stable -c user.name='github-actions[bot]' \
+              -c user.email='41898282+github-actions[bot]@users.noreply.github.com' \
+              merge --squash --no-commit FETCH_HEAD
+          fi
+          git -C source diff --binary "$MERGE_SHA^1" "$MERGE_SHA" -- \
+            Dockerfile .github/python-image-digest .github/workflows/ > "$RUNNER_TEMP/dependencies.patch"
+          test -s "$RUNNER_TEMP/dependencies.patch"
+          git -C stable apply --3way "$RUNNER_TEMP/dependencies.patch"
+      - uses: peter-evans/create-pull-request@3ffccacd46053766916f087ce41d627c0b8cf2d1
+        with:
+          path: stable
+          token: ${{ secrets.RELEASE_BOT_TOKEN }}
+          branch: automation/promote-dependency-release
+          delete-branch: true
+          base: stable
+          commit-message: "chore: promote tested dependencies"
+          title: "Promote tested dependencies to stable"
+          body: "Promotes only dependency changes tested on main. CI must pass before merge."
+          labels: dependencies

@@ -40,13 +40,17 @@ channel=latest
 if [[ "$version" == *-beta.* ]]; then
     channel=beta
 fi
-if channel_manifest="$(docker buildx imagetools inspect --raw "$image:$channel" 2>/dev/null)"; then
+if channel_manifest="$(docker buildx imagetools inspect --raw "$image:$channel" 2>"$reply")"; then
     annotated_version="$(jq -r '.annotations["org.opencontainers.image.version"] // empty' <<< "$channel_manifest")"
     if [[ -n "$annotated_version" ]]; then
         current_channel_version="$annotated_version"
     fi
 else
-    current_channel_version=""
+    if ! grep -Eqi 'manifest unknown|not found|no such manifest' "$reply"; then
+        cat "$reply" >&2
+        echo "Could not inspect the $channel channel." >&2
+        exit 1
+    fi
 fi
 tags=("$image:$version")
 if [[ -z "$current_channel_version" ]] || {

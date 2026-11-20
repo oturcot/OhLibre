@@ -3,6 +3,9 @@ name: CI
 on:
   pull_request:
     branches: [main, stable]
+    types: [opened, synchronize, reopened, ready_for_review]
+  pull_request_review:
+    types: [submitted]
   push:
     branches: [main, stable]
   merge_group:
@@ -11,17 +14,58 @@ on:
 permissions:
   contents: read
 
+concurrency:
+  group: >-
+    ${{ github.workflow }}-${{ github.event_name == 'pull_request' && format('pr-{0}', github.event.pull_request.number) ||
+      (github.event_name == 'pull_request_review' && github.event.review.user.login == github.repository_owner &&
+       github.event.review.state == 'approved' && github.event.review.commit_id == github.event.pull_request.head.sha &&
+       format('pr-{0}', github.event.pull_request.number)) || github.run_id }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' || github.event_name == 'pull_request_review' }}
+
 jobs:
+  authorize:
+    runs-on: ubuntu-latest
+    outputs:
+      allowed: ${{ steps.check.outputs.allowed }}
+      ref: ${{ steps.check.outputs.ref }}
+    steps:
+      - id: check
+        env:
+          ALLOWED: >-
+            ${{ github.event_name == 'push' || github.event_name == 'merge_group' ||
+                github.event_name == 'workflow_dispatch' ||
+                (github.event_name == 'pull_request' &&
+                  (github.event.pull_request.user.login == github.repository_owner ||
+                   (github.event.pull_request.head.repo.full_name == github.repository &&
+                    (github.event.pull_request.user.login == 'dependabot[bot]' ||
+                     github.event.pull_request.head.ref == 'automation/promote-dependency-release' ||
+                     github.event.pull_request.head.ref == 'automation/update-python-image')))) ||
+                (github.event_name == 'pull_request_review' &&
+                 github.event.review.user.login == github.repository_owner &&
+                 github.event.review.state == 'approved' &&
+                 github.event.review.commit_id == github.event.pull_request.head.sha) }}
+          REF: ${{ github.event.review.commit_id || github.event.pull_request.head.sha || github.sha }}
+        run: |
+          echo "allowed=$ALLOWED" >> "$GITHUB_OUTPUT"
+          echo "ref=$REF" >> "$GITHUB_OUTPUT"
   ohdio:
+    needs: authorize
+    if: needs.authorize.outputs.allowed == 'true'
     uses: ./.github/workflows/test-ohdio.yml
+    with:
+      ref: ${{ needs.authorize.outputs.ref }}
   archives:
-    if: github.event_name != 'push'
     needs: ohdio
     uses: ./.github/workflows/package-ohdio.yml
-  beta:
-    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
-    needs: ohdio
-    uses: ./.github/workflows/publish-ohdio.yml
-    permissions:
-      contents: write
-      packages: write
+    with:
+      ref: ${{ github.event.review.commit_id || github.event.pull_request.head.sha || github.sha }}
+  gate:
+    name: Gated tests
+    if: always() && needs.authorize.outputs.allowed == 'true'
+    needs: [authorize, ohdio, archives]
+    runs-on: ubuntu-latest
+    env:
+      TEST_RESULT: ${{ needs.ohdio.result }}
+      ARCHIVE_RESULT: ${{ needs.archives.result }}
+    steps:
+      - run: test "$TEST_RESULT" = success && test "$ARCHIVE_RESULT" = success
