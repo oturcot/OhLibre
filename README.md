@@ -68,6 +68,13 @@ fusion vers `main` ou `stable`, et avant les releases. Les PR construisent
 et rechargent aussi les deux archives Docker, sans les publier en release.
 Tous ces jobs utilisent des runners GitHub hébergés.
 
+Par défaut, GitHub demande une approbation avant d'exécuter les workflows sur
+les PR créées par Copilot dans le cloud. Pour les lancer sans intervention,
+un administrateur du dépôt doit désactiver **Require approval for workflow
+runs** dans **Settings → Copilot → Cloud agent → Policies**. Cette option
+autorise les workflows à traiter du code non vérifié par une personne; vérifie
+leurs permissions avant de l'activer.
+
 ## Installer depuis une release privée
 
 Les commits sur `main` qui passent les tests produisent une bêta. Une
