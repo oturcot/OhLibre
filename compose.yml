@@ -9,4 +9,6 @@ services:
       OHDIO_SHOWS: "6056,12879,3858,302,3855,52"
       OHDIO_OUTPUT: /podcasts
     volumes:
-      - /Users/oturcot/mnt/Docker_mac_data/Docker/Plex/media/Podcasts/:/podcasts
+      - type: bind
+        source: ${PODCAST_DIR:-./podcasts}
+        target: /podcasts
