@@ -54,3 +54,10 @@ jobs:
           if-no-files-found: error
           compression-level: 0
           retention-days: 30
+      - name: Verify the release version in the image
+        env:
+          ARCH: ${{ matrix.arch }}
+        run: |
+          bash .github/scripts/stamp-image-version.sh 0.0.0-beta.0 "$ARCH"
+          docker run --rm --entrypoint python radio-canada-podcast:local \
+            -c 'import os; assert os.environ["OHDIO_VERSION"] == "0.0.0-beta.0"'

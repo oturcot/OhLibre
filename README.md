@@ -126,8 +126,11 @@ proposés à `stable`, retestés et publiés en nouvelle version patch. Les PR
 manuelles ne sont jamais fusionnées automatiquement. Une mise à jour de
 `python:latest` peut inclure une nouvelle version majeure de Python.
 
-Les images publiées proviennent des archives testées, sans reconstruction
-après la CI. Le workflow reprend les brouillons incomplets; une release déjà
+Les images publiées proviennent des archives testées : à la publication, leur
+configuration reçoit le numéro de release, sans reconstruire l'application.
+Au démarrage, le journal indique cette version; une image construite
+localement indique `développement`.
+Le workflow reprend les brouillons incomplets; une release déjà
 publiée ne voit pas ses fichiers remplacés. Les releases sont finalisées
 après publication dans GHCR privé. Configurer `RELEASE_BOT_TOKEN` avec accès
 en écriture au contenu, aux PR, aux Actions et aux workflows; `GITHUB_TOKEN`

@@ -141,6 +141,8 @@ def main() -> None:
             fcntl.flock(lock, fcntl.LOCK_EX | fcntl.LOCK_NB)
         except BlockingIOError:
             parser.exit(1, f"Un autre téléchargeur utilise déjà {root}\n")
+        logging.info("Démarrage du téléchargeur OHdio — version %s",
+                     os.environ.get("OHDIO_VERSION", "développement"))
         with ThreadPoolExecutor(max_workers=len(shows)) as workers:
             futures = [workers.submit(run, show, root, stop, args.once) for show in shows]
             try:
