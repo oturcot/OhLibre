@@ -32,7 +32,7 @@ jobs:
           docker image rm radio-canada-podcast:local
           docker image load -i "$archive"
           sed -e '/^    build: /d' -e 's/    pull_policy: build/    pull_policy: never/' \
-            compose.yml > release-compose.yml
+            docker-compose.yml > release-compose.yml
           docker compose -f release-compose.yml config -q
           docker compose -f release-compose.yml run --rm --no-deps ohdio --help
       - uses: actions/upload-artifact@v7
