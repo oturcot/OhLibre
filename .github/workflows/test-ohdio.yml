@@ -30,7 +30,7 @@ jobs:
           command -v ffmpeg
           command -v ffprobe
           bash .github/scripts/test-release-version.sh
-          bash .github/scripts/test-publish-ghcr.sh
+          bash .github/scripts/test-publish-dockerhub.sh
           docker compose config -q
           OHDIO_LIVE_TEST=1 python -m unittest discover -s tests -v
   image:
