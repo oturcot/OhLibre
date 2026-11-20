@@ -22,5 +22,6 @@ jobs:
     uses: ./.github/workflows/publish-ohdio.yml
     permissions:
       contents: write
+      packages: write
     with:
       version: ${{ inputs.version || github.ref_name }}

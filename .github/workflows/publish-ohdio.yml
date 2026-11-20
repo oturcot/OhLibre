@@ -20,6 +20,8 @@ jobs:
     timeout-minutes: 15
     permissions:
       contents: write
+    outputs:
+      version: ${{ steps.publish.outputs.version }}
     concurrency:
       group: ohdio-release-${{ inputs.version || github.run_id }}
       cancel-in-progress: false
@@ -33,6 +35,7 @@ jobs:
           merge-multiple: true
           path: release-assets
       - name: Publish to the private GitHub repository
+        id: publish
         env:
           GH_TOKEN: ${{ github.token }}
           VERSION: ${{ inputs.version }}
@@ -50,6 +53,7 @@ jobs:
             exit 1
           fi
           tag="${VERSION:-$base-beta.$GITHUB_RUN_NUMBER}"
+          echo "version=$tag" >> "$GITHUB_OUTPUT"
           existing="$(gh api "repos/$GITHUB_REPOSITORY/git/matching-refs/tags/$tag" \
             --jq ".[] | select(.ref == \"refs/tags/$tag\") | .ref")"
           if [[ -n "$existing" ]]; then
@@ -67,5 +71,38 @@ jobs:
           sed -e '/^    build: /d' -e 's/    pull_policy: build/    pull_policy: never/' \
             compose.yml > release-assets/compose.yml
           (cd release-assets && sha256sum radio-canada-podcast-linux-{amd64,arm64}.tar.gz compose.yml > SHA256SUMS)
+          bash .github/scripts/registry-compose.sh release-assets/compose.yml \
+            "${GITHUB_REPOSITORY_OWNER,,}" > release-assets/docker-compose.ghcr.yml
+          (cd release-assets && sha256sum docker-compose.ghcr.yml >> SHA256SUMS)
           gh release create "$tag" release-assets/* --repo "$GITHUB_REPOSITORY" \
             --target "$GITHUB_SHA" --title "$tag" --generate-notes "${flags[@]}"
+  ghcr:
+    if: github.event.repository.private
+    needs: release
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    permissions:
+      contents: read
+      packages: write
+    concurrency:
+      group: ghcr-ohdio-${{ inputs.version == '' && 'beta' || 'stable' }}
+      cancel-in-progress: false
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+      - uses: actions/download-artifact@v8
+        with:
+          pattern: ohdio-linux-*
+          merge-multiple: true
+          path: release-assets
+      - name: Push the tested images to private GHCR
+        env:
+          GH_TOKEN: ${{ github.token }}
+          VERSION: ${{ needs.release.outputs.version }}
+        run: |
+          set -euo pipefail
+          [[ "$(gh api "repos/$GITHUB_REPOSITORY" --jq .private)" == true ]]
+          echo "$GH_TOKEN" | docker login ghcr.io -u "$GITHUB_ACTOR" --password-stdin
+          bash .github/scripts/publish-ghcr.sh \
+            "ghcr.io/${GITHUB_REPOSITORY_OWNER,,}/radio-canada-podcast" "$VERSION" release-assets
