@@ -40,6 +40,14 @@ channel=latest
 if [[ "$version" == *-beta.* ]]; then
     channel=beta
 fi
+if channel_manifest="$(docker buildx imagetools inspect --raw "$image:$channel" 2>/dev/null)"; then
+    annotated_version="$(jq -r '.annotations["org.opencontainers.image.version"] // empty' <<< "$channel_manifest")"
+    if [[ -n "$annotated_version" ]]; then
+        current_channel_version="$annotated_version"
+    fi
+else
+    current_channel_version=""
+fi
 tags=("$image:$version")
 if [[ -z "$current_channel_version" ]] || {
     [[ "$current_channel_version" != "$version" ]] &&
@@ -53,6 +61,7 @@ tag_args=()
 for tag in "${tags[@]}"; do
     tag_args+=(--tag "$tag")
 done
-docker buildx imagetools create "${tag_args[@]}" "${sources[@]}"
+docker buildx imagetools create --annotation "index:org.opencontainers.image.version=$version" \
+    "${tag_args[@]}" "${sources[@]}"
 docker buildx imagetools inspect --raw "$image:$version" | jq -e \
     '[.manifests[].platform | select(.os == "linux") | .architecture] | sort == ["amd64","arm64"]'
