@@ -15,12 +15,13 @@ docker compose logs -f ohdio
 ```
 
 Le dossier de stockage par défaut est **`./podcasts`**, à côté de
-[`compose.yml`](./compose.yml). Pour le modifier, change `volumes.source` dans
-le Compose ou crée un fichier `.env` avec `PODCAST_DIR=/chemin/vers/Podcasts`.
-Le conteneur y accède sous `/podcasts`. Il crée un sous-dossier par numéro
-d'émission; configure le serveur pour lire les MP3, pas le dossier caché
-`.ohdio`. Conserve ce dossier caché lors des migrations : il contient l'index
-des épisodes et les segments en attente.
+[`docker-compose.yml`](./docker-compose.yml), détecté sans option `-f`.
+Pour le modifier, change `volumes.source` dans le Compose ou crée un fichier
+`.env` avec `PODCAST_DIR=/chemin/vers/Podcasts`. Le conteneur y accède sous
+`/podcasts`. Il crée un sous-dossier par numéro d'émission; configure le
+serveur pour lire les MP3, pas le dossier caché `.ohdio`. Conserve ce dossier
+caché lors des migrations : il contient l'index des épisodes et les segments
+en attente.
 
 | ID dans `OHDIO_SHOWS` | Émission | Première vérification (heure de Toronto) |
 | --- | --- | --- |
@@ -52,6 +53,20 @@ Les rediffusions signalées par OHdio ou qui réutilisent un identifiant audio
 déjà publié sont ignorées; une rediffusion non signalée avec de nouveaux
 identifiants ne peut pas être reconnue par ce mécanisme.
 
+## Monter un dossier hôte existant
+
+Copie [`.env.example`](./.env.example) en `.env` à côté du Compose si tu
+veux stocker les épisodes ailleurs. Indique le chemin sur la machine qui
+exécute Docker, par exemple :
+
+```dotenv
+PODCAST_DIR="/mnt/media/Mes balados"
+```
+
+Le dossier est monté en lecture et écriture sous `/podcasts`. Il reste
+sur l'hôte lorsque le conteneur est recréé; ne supprime pas le sous-dossier
+caché `.ohdio`, qui sert à la déduplication et à la reprise.
+
 ## Tester
 
 Avec Python 3.13+ et FFmpeg (dont `ffprobe`) :
@@ -73,8 +88,15 @@ Tous ces jobs utilisent des runners GitHub hébergés.
 Les commits sur `main` qui passent les tests produisent une bêta. Une
 release stable est créée après les tests sur un tag `X.Y.Z`, ou depuis
 **Actions → Release → Run workflow** sur `main` ou `stable`, avec une version
-`X.Y.Z`. La publication se fait uniquement dans les releases du dépôt privé,
-via le `GITHUB_TOKEN` fourni par GitHub Actions, sans registre.
+`X.Y.Z`. Les releases du dépôt privé sont publiées via le `GITHUB_TOKEN`
+fourni par GitHub Actions. Les mêmes images sont
+également publiées dans le paquet GHCR privé décrit ci-dessous.
+
+Lors d'une relance, une release publiée avec tous les fichiers attendus réussit
+sans rien remplacer. Un brouillon est repris seulement s'il cible le commit
+courant et contient tous les fichiers attendus; il est publié après la réussite
+de l'envoi dans GHCR. Une release incomplète ou un brouillon ciblant un autre
+commit fait échouer le workflow sans modifier la release.
 
 Depuis la même release, télécharge `compose.yml`, `SHA256SUMS` et l'archive
 correspondant à ta machine : `radio-canada-podcast-linux-amd64.tar.gz` pour
@@ -89,3 +111,39 @@ docker compose up -d
 ```
 
 Le Compose de la release utilise uniquement l'image chargée localement.
+
+## Mettre à jour depuis GHCR privé
+
+GitHub Actions publie `ghcr.io/oturcot/radio-canada-podcast` sans secret
+supplémentaire côté CI. Utilise `latest` pour les stables, `beta` pour les
+bêtas de `main`, ou un numéro de version pour rester sur cette version.
+`latest` n'existe pas avant la première release stable. Le paquet doit rester
+privé. Le Compose GHCR ne contient aucun identifiant.
+
+Sur l'hôte Docker, crée un [jeton GitHub classique `read:packages`](https://github.com/settings/tokens/new?scopes=read:packages)
+pour un compte avec accès au paquet. Pour le saisir sans l'afficher dans Bash :
+
+```bash
+read -rs -p "Jeton GitHub Packages : " token; printf '\n'
+printf '%s' "$token" | docker login ghcr.io -u TON_UTILISATEUR_GITHUB --password-stdin
+unset token
+```
+
+Utilise le magasin d'identifiants de Docker. Enregistre l'asset
+`docker-compose.ghcr.yml` de la release sous `docker-compose.yml` dans un
+dossier de déploiement séparé du clone. Pour garder la bibliothèque existante,
+indique son chemin hôte absolu dans le `.env` du déploiement, sans démarrer deux
+conteneurs sur le même dossier. Pour suivre les bêtas avant la première stable,
+ajoute `OHDIO_TAG=beta` à ce `.env`.
+
+```sh
+docker compose up -d
+```
+
+Compose ne surveille pas le registre quand le conteneur tourne. Pour les
+mises à jour périodiques, fais exécuter la commande suivante par `cron` ou
+`systemd` dans le dossier du Compose, sous le même compte que `docker login` :
+
+```sh
+docker compose pull && docker compose up -d --pull never
+```

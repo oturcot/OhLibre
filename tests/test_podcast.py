@@ -31,6 +31,35 @@ def probe(path: Path) -> dict:
 
 
 class DownloadTest(unittest.TestCase):
+    def test_first_segment_is_published_before_fetching_the_second(self) -> None:
+        show = "3858"
+        schedule = SCHEDULES[show]
+        slot = schedule.next_start(datetime(2026, 11, 16, tzinfo=TORONTO))
+        ep, = episodes(fixture(show, slot - timedelta(minutes=10), [101, 102]), show)
+        with tempfile.TemporaryDirectory() as directory:
+            library = Library(Path(directory), show)
+            published_during_second_fetch: list[dict] = []
+
+            def fake_fetch(media_id: str, path: Path) -> bool:
+                if media_id == "102":
+                    output, = library.output.glob("*.mp3")
+                    published_during_second_fetch.append(probe(output))
+                    return False
+                ffmpeg("-f", "lavfi", "-i", "sine=frequency=431", "-t", "1",
+                       "-ac", "2", "-ar", "44100", "-b:a", "128k",
+                       "-write_xing", "0", str(path))
+                return True
+
+            day = slot.date().isoformat()
+            with patch("library.fetch", side_effect=fake_fetch):
+                self.assertFalse(library.publish(ep, day, schedule.tag_hour, schedule.parts))
+
+            self.assertEqual(len(published_during_second_fetch), 1)
+            self.assertAlmostEqual(float(published_during_second_fetch[0]["duration"]), 1, delta=0.1)
+            output, = library.output.glob("*.mp3")
+            self.assertAlmostEqual(float(probe(output)["duration"]), 1, delta=0.1)
+            self.assertEqual(library.state["entries"][ep.id]["media"], ["101"])
+
     def test_six_shows_publish_once_and_replace_partial(self) -> None:
         for show, schedule in SCHEDULES.items():
             with self.subTest(show=show), tempfile.TemporaryDirectory() as directory:

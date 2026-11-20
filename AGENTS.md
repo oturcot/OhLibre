@@ -6,5 +6,5 @@
 - Vérifier les émissions programmées toutes les cinq minutes après la fin du segment attendu; pour les balados sans horaire, vérifier quatre fois par jour.
 - Publier le premier segment disponible, puis remplacer atomiquement le même fichier par la version fusionnée dans l'ordre de diffusion. Persister les identifiants des épisodes et segments; ignorer les rediffusions détectables.
 - Tester les six émissions sur les PR, sur `main` et avant les releases. Pour l'instant, utiliser exclusivement les runners hébergés par GitHub; ne pas configurer le runner macOS auto-hébergé.
-- Joindre l'image Docker et le Compose aux releases du dépôt privé; ne rien pousser vers un registre. Utiliser le `GITHUB_TOKEN` fourni par Actions si possible. Documenter toute étape externe requise dans une issue assignée à `oturcot`.
+- Joindre l'image Docker et le Compose aux releases du dépôt privé. Publier les mêmes images uniquement dans le paquet GHCR privé du projet, via `GITHUB_TOKEN`. Ne jamais rendre le paquet public ni publier sur Docker Hub. Documenter toute étape externe requise dans une issue assignée à `oturcot`.
 - Ne pas ajouter de serveur ou de fonctionnalité hors périmètre sans approbation. Vérifier le contrat OHdio sur les pages publiques et garder les tests déterministes indépendants du réseau.
