@@ -27,12 +27,7 @@ jobs:
         with:
           ref: ${{ inputs.ref || github.sha }}
           persist-credentials: false
-      - name: Ensure jq is installed
-        run: |
-          if ! command -v jq >/dev/null 2>&1; then
-            sudo apt-get update
-            sudo apt-get install -y jq
-          fi
+      - uses: dcarbone/install-jq-action@v4.0.1
       - uses: docker/setup-qemu-action@v3
         if: matrix.arch == 'arm64'
       - uses: docker/setup-buildx-action@v3
