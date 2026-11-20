@@ -32,10 +32,12 @@ def probe(path: Path) -> dict:
 
 class DownloadTest(unittest.TestCase):
     def test_long_episode_title_fits_filesystem_limit(self) -> None:
-        filename = episode_filename("2026-11-16", "é" * 200)
-        self.assertLessEqual(len(filename.encode("utf-8")), 255)
-        self.assertTrue(filename.startswith("2026-11-16_"))
-        self.assertTrue(filename.endswith(".mp3"))
+        for title in ("a" * 300, "é" * 200):
+            filename = episode_filename("2026-11-16", title)
+            self.assertLessEqual(len(filename.encode("utf-8")), 255)
+            self.assertLessEqual(len(f".{Path(filename).stem}.tmp".encode("utf-8")), 255)
+            self.assertTrue(filename.startswith("2026-11-16_"))
+            self.assertTrue(filename.endswith(".mp3"))
 
     def test_reuses_existing_unicode_show_directory_without_moving_old_files(self) -> None:
         with tempfile.TemporaryDirectory() as directory:

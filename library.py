@@ -47,7 +47,7 @@ def episode_filename(date: str, title: str) -> str:
         raise ValueError(f"Date de fichier invalide : {date!r}")
     title = unicodedata.normalize("NFC", re.sub(r'[\\/:*?"<>|\x00-\x1f]', " ", title))
     title = " ".join(title.split()).strip(" .")
-    title = title.encode("utf-8")[:240].decode("utf-8", errors="ignore").rstrip(" .")
+    title = title.encode("utf-8")[:239].decode("utf-8", errors="ignore").rstrip(" .")
     if not title:
         raise ValueError("Titre d'épisode inutilisable comme nom de fichier")
     return f"{date}_{title}.mp3"
