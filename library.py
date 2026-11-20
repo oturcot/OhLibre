@@ -39,6 +39,23 @@ def fetch(media_id: str, path: Path) -> bool:
     return True
 
 
+def publish_audio(output: Path, work: Path, episode: Episode, date: str, hour: str,
+                  media: list[str]) -> None:
+    playlist = work / "concat.txt"
+    playlist.write_text("".join(f"file '{mid}.mp3'\n" for mid in media), encoding="ascii")
+    temp = output.with_name(f".{output.stem}.tmp")
+    try:
+        date_tag = f"{date}T{hour}"
+        ffmpeg("-f", "concat", "-safe", "1", "-i", str(playlist), "-c", "copy",
+               "-id3v2_version", "4", "-metadata", f"title={episode.title}",
+               "-metadata", f"date={date_tag}", "-metadata", f"comment={episode.summary}",
+               "-f", "mp3", str(temp))
+        temp.replace(output)
+    finally:
+        temp.unlink(missing_ok=True)
+        playlist.unlink(missing_ok=True)
+
+
 class Library:
     def __init__(self, root: Path, show: str) -> None:
         self.output = root / show
@@ -85,24 +102,18 @@ class Library:
                     logging.warning("Média %s indisponible : %s", mid, error)
                     break
             ready.append(mid)
+            if len(ready) == 1 and len(episode.media) > 1 and not previous:
+                publish_audio(output, self.work, episode, date, hour, ready)
+                previous = ready.copy()
+                entries[episode.id] = {"date": date, "media": ready.copy(), "complete": False}
+                self.save()
+                logging.info("%s : partiel (1 segment)", output)
         complete = bool(ready) and len(ready) >= expected and len(ready) == len(episode.media)
         if not ready or len(ready) < len(previous):
             return False
 
         if ready != previous:
-            playlist = self.work / "concat.txt"
-            playlist.write_text("".join(f"file '{mid}.mp3'\n" for mid in ready), encoding="ascii")
-            temp = self.output / f".{output.stem}.tmp"
-            try:
-                date_tag = f"{date}T{hour}"
-                ffmpeg("-f", "concat", "-safe", "1", "-i", str(playlist), "-c", "copy",
-                       "-id3v2_version", "4", "-metadata", f"title={episode.title}",
-                       "-metadata", f"date={date_tag}", "-metadata", f"comment={episode.summary}",
-                       "-f", "mp3", str(temp))
-                temp.replace(output)
-            finally:
-                temp.unlink(missing_ok=True)
-                playlist.unlink(missing_ok=True)
+            publish_audio(output, self.work, episode, date, hour, ready)
             logging.info("%s : %s (%d segment(s))", output, "complet" if complete else "partiel", len(ready))
 
         entries[episode.id] = {"date": date, "media": ready, "complete": complete}
