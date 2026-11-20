@@ -52,6 +52,20 @@ Les rediffusions signalées par OHdio ou qui réutilisent un identifiant audio
 déjà publié sont ignorées; une rediffusion non signalée avec de nouveaux
 identifiants ne peut pas être reconnue par ce mécanisme.
 
+## Monter un dossier hôte existant
+
+Copie [`.env.example`](./.env.example) en `.env` à côté du Compose si tu
+veux stocker les épisodes ailleurs. Indique le chemin sur la machine qui
+exécute Docker, par exemple :
+
+```dotenv
+PODCAST_DIR="/mnt/media/Mes balados"
+```
+
+Le dossier est monté en lecture et écriture sous `/podcasts`. Il reste
+sur l'hôte lorsque le conteneur est recréé; ne supprime pas le sous-dossier
+caché `.ohdio`, qui sert à la déduplication et à la reprise.
+
 ## Tester
 
 Avec Python 3.13+ et FFmpeg (dont `ffprobe`) :
