@@ -6,9 +6,6 @@ on:
       ref:
         type: string
         default: ''
-      upload-artifacts:
-        type: boolean
-        default: true
 
 permissions:
   contents: read
@@ -54,13 +51,12 @@ jobs:
             '.services.ohdio | .image == $image and .pull_policy == "always" and
              .build == null and any(.volumes[]; .type == "bind" and .target == "/podcasts")'
       - uses: actions/upload-artifact@v7
-        if: inputs.upload-artifacts
         with:
           name: ohdio-linux-${{ matrix.arch }}
           path: radio-canada-podcast-linux-${{ matrix.arch }}.tar.gz
           if-no-files-found: error
           compression-level: 0
-          retention-days: 30
+          retention-days: 7
       - name: Verify the release version in the image
         env:
           ARCH: ${{ matrix.arch }}

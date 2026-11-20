@@ -54,12 +54,13 @@ jobs:
     uses: ./.github/workflows/test-ohdio.yml
     with:
       ref: ${{ needs.authorize.outputs.ref }}
+      test-images: ${{ github.event_name != 'pull_request' && github.event_name != 'pull_request_review' && github.event_name != 'merge_group' }}
   archives:
     needs: ohdio
+    if: github.event_name != 'pull_request' && github.event_name != 'pull_request_review' && github.event_name != 'merge_group'
     uses: ./.github/workflows/package-ohdio.yml
     with:
       ref: ${{ github.event.review.commit_id || github.event.pull_request.head.sha || github.sha }}
-      upload-artifacts: ${{ github.event_name != 'pull_request' && github.event_name != 'pull_request_review' && github.event_name != 'merge_group' }}
   gate:
     name: Gated tests
     if: always() && needs.authorize.outputs.allowed == 'true'
@@ -68,5 +69,12 @@ jobs:
     env:
       TEST_RESULT: ${{ needs.ohdio.result }}
       ARCHIVE_RESULT: ${{ needs.archives.result }}
+      EVENT_NAME: ${{ github.event_name }}
     steps:
-      - run: test "$TEST_RESULT" = success && test "$ARCHIVE_RESULT" = success
+      - run: |
+          test "$TEST_RESULT" = success
+          if [[ "$EVENT_NAME" == pull_request || "$EVENT_NAME" == pull_request_review || "$EVENT_NAME" == merge_group ]]; then
+            test "$ARCHIVE_RESULT" = skipped
+          else
+            test "$ARCHIVE_RESULT" = success
+          fi
