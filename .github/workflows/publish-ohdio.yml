@@ -160,7 +160,7 @@ jobs:
           [[ -n "$DOCKERHUB_TOKEN" ]]
           export DOCKER_CONFIG
           DOCKER_CONFIG="$(mktemp -d "$RUNNER_TEMP/dockerhub.XXXXXX")"
-          trap 'rm -f "$DOCKER_CONFIG/config.json"; rmdir "$DOCKER_CONFIG"' EXIT
+          trap 'rm -f "$DOCKER_CONFIG/config.json"' EXIT
           printf '%s' "$DOCKERHUB_TOKEN" | docker login -u "$DOCKERHUB_USERNAME" --password-stdin
           channel=latest
           pattern='^[0-9]+\.[0-9]+\.[0-9]+$'
