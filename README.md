@@ -176,3 +176,6 @@ mises à jour périodiques, fais exécuter la commande suivante par `cron` ou
 ```sh
 docker compose pull && docker compose up -d --pull never
 ```
+
+
+test
