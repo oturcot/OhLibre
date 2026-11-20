@@ -37,49 +37,18 @@ class DownloadTest(unittest.TestCase):
         self.assertTrue(filename.startswith("2026-11-16_"))
         self.assertTrue(filename.endswith(".mp3"))
 
-    def test_existing_indexed_episode_moves_to_named_unicode_directory(self) -> None:
-        aired = datetime(2026, 11, 16, tzinfo=TORONTO)
-        episode, = episodes(fixture("302", aired, [101]), "302")
-        episode = replace(episode, show_title="À la une")
+    def test_reuses_existing_unicode_show_directory_without_moving_old_files(self) -> None:
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory)
             library = Library(root, "302")
-            library.state["entries"][episode.id] = {
-                "date": "2026-11-16", "media": ["101"], "complete": True,
-            }
-            library.save()
             old = root / "302" / "2026-11-16-305.mp3"
             old.parent.mkdir()
             old.write_bytes(b"existing audio")
             existing = root / "A\u0300 la une"
             existing.mkdir()
-
-            self.assertTrue(library.publish(episode, "2026-11-16", "05:30", 1))
+            library.set_show_title("À la une")
             self.assertEqual(library.output, existing)
-            self.assertEqual((existing / "2026-11-16_Épisode complet test.mp3").read_bytes(),
-                             b"existing audio")
-            self.assertFalse(old.exists())
-
-    def test_migration_never_overwrites_existing_audio(self) -> None:
-        aired = datetime(2026, 11, 16, tzinfo=TORONTO)
-        episode, = episodes(fixture("302", aired, [101]), "302")
-        with tempfile.TemporaryDirectory() as directory:
-            root = Path(directory)
-            library = Library(root, "302")
-            library.state["entries"][episode.id] = {
-                "date": "2026-11-16", "media": ["101"], "complete": True,
-            }
-            old = root / "302" / "2026-11-16-305.mp3"
-            old.parent.mkdir()
-            old.write_bytes(b"old")
-            destination = root / "Émission 302" / old.name
-            destination.parent.mkdir()
-            destination.write_bytes(b"other")
-
-            with self.assertRaises(FileExistsError):
-                library.publish(episode, "2026-11-16", "05:30", 1)
-            self.assertEqual(old.read_bytes(), b"old")
-            self.assertEqual(destination.read_bytes(), b"other")
+            self.assertEqual(old.read_bytes(), b"existing audio")
 
     def test_existing_unindexed_episode_is_not_overwritten(self) -> None:
         aired = datetime(2026, 11, 16, tzinfo=TORONTO)

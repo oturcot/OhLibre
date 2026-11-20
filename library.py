@@ -1,17 +1,12 @@
 import json
 import logging
-import os
 import re
 import subprocess
 import unicodedata
 from pathlib import Path
-from threading import Lock
 from typing import NotRequired, TypedDict
 
 from ohdio import Episode, manifest
-
-
-DIRECTORY_LOCK = Lock()
 
 
 class Entry(TypedDict):
@@ -78,7 +73,6 @@ def publish_audio(output: Path, work: Path, episode: Episode, date: str, hour: s
 class Library:
     def __init__(self, root: Path, show: str) -> None:
         self.root = root
-        self.show = show
         self.output = root / show
         self.work = root / ".ohdio" / show
         self.work.mkdir(parents=True, exist_ok=True)
@@ -90,37 +84,12 @@ class Library:
         name = unicodedata.normalize("NFC", re.sub(r'[\\/:*?"<>|\x00-\x1f]', " ", title)).strip(" .")
         if not name or name in {".ohdio", ".ohdio.lock"}:
             raise ValueError(f"Nom d'émission invalide : {title!r}")
-        with DIRECTORY_LOCK:
-            markers = self.root / ".ohdio"
-            for marker in markers.glob("*/directory"):
-                if marker.parent != self.work and unicodedata.normalize(
-                    "NFC", marker.read_text(encoding="utf-8")
-                ) == name:
-                    raise ValueError(f"Le dossier {name!r} appartient déjà à une autre émission")
-            matches = [path for path in self.root.iterdir()
-                       if unicodedata.normalize("NFC", path.name) == name]
-            if len(matches) > 1:
-                raise ValueError(f"Plusieurs dossiers correspondent à {name!r}")
-            output = matches[0] if matches else self.root / name
-            output.mkdir(parents=True, exist_ok=True)
-            marker = self.work / "directory"
-            if marker.exists() and unicodedata.normalize("NFC", marker.read_text(encoding="utf-8")) != name:
-                raise ValueError(f"Le nom de l'émission {self.show} a changé; migration manuelle requise")
-            marker.write_text(name, encoding="utf-8")
-            legacy = self.root / self.show
-            if legacy != output:
-                for episode_id, entry in self.state["entries"].items():
-                    old = legacy / entry.get("filename", f'{entry["date"]}-{episode_id}.mp3')
-                    new = output / old.name
-                    if not old.is_file():
-                        continue
-                    try:
-                        os.link(old, new)
-                    except FileExistsError:
-                        if not os.path.samefile(old, new):
-                            raise FileExistsError(f"Migration refusée : {new} existe déjà")
-                    old.unlink()
-            self.output = output
+        matches = [path for path in self.root.iterdir()
+                   if unicodedata.normalize("NFC", path.name) == name]
+        if len(matches) > 1:
+            raise ValueError(f"Plusieurs dossiers correspondent à {name!r}")
+        self.output = matches[0] if matches else self.root / name
+        self.output.mkdir(parents=True, exist_ok=True)
 
     def save(self) -> None:
         temp = self.index.with_suffix(".tmp")
@@ -143,24 +112,15 @@ class Library:
         filename = entry.get("filename") if entry else None
         if filename is not None and (Path(filename).name != filename or "\\" in filename):
             raise ValueError(f"Nom de fichier indexé invalide : {filename!r}")
+        old = self.output / f"{date}-{episode.id}.mp3"
+        if entry and filename is None and old.is_file():
+            filename = old.name
         if filename is None:
             filename = episode_filename(date, episode.title)
             output = self.output / filename
-            old = self.output / f"{date}-{episode.id}.mp3"
-            if output.exists() and (not entry or not old.exists() or not os.path.samefile(old, output)):
+            if output.exists():
                 raise FileExistsError(f"Publication refusée : {output} existe déjà sans index")
-            if entry:
-                entry["filename"] = filename
-                self.save()
         output = self.output / filename
-        old = self.output / f"{date}-{episode.id}.mp3"
-        if entry and old.is_file() and old != output:
-            try:
-                os.link(old, output)
-            except FileExistsError:
-                if not os.path.samefile(old, output):
-                    raise FileExistsError(f"Migration refusée : {output} existe déjà")
-            old.unlink()
         if not entry and output.exists():
             raise FileExistsError(f"Publication refusée : {output} existe déjà sans index")
         previous = entry["media"] if entry and output.is_file() else []

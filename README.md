@@ -20,9 +20,8 @@ Pour le modifier, change `volumes.source` dans le Compose ou crée un fichier
 `.env` avec `PODCAST_DIR=/chemin/vers/Podcasts`. Le conteneur y accède sous
 `/podcasts`. Il crée un sous-dossier portant le nom de l'émission; configure le
 serveur pour lire les MP3, pas le dossier caché `.ohdio`. Conserve ce dossier
-caché lors des migrations : il contient l'index des épisodes et les segments
-en attente. Les fichiers connus dans les anciens dossiers numériques sont
-déplacés sans écraser un fichier existant lors de la prochaine vérification.
+caché : il contient l'index des épisodes et les segments en attente. Les
+fichiers existants ne sont ni copiés ni déplacés.
 
 | ID dans `OHDIO_SHOWS` | Émission | Première vérification (heure de Toronto) |
 | --- | --- | --- |
@@ -47,7 +46,7 @@ manqués pendant un arrêt prolongé.
 Le fichier `AAAA-MM-JJ_titre de l'épisode.mp3` est visible dès le premier
 segment. Les caractères incompatibles avec les noms de fichiers sont retirés
 du nom; le titre dans les métadonnées reste celui d'OHdio. Les anciens noms
-indexés sont migrés sans écraser un fichier existant.
+ne sont pas modifiés.
 FFmpeg assemble les segments dans l'ordre annoncé par OHdio et remplace ce
 même fichier sans exposer de fichier en cours d'écriture. Le serveur doit
 rescanner le fichier pour voir sa nouvelle durée; un fichier déjà téléchargé
