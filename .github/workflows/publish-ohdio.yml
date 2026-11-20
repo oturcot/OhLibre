@@ -1,4 +1,4 @@
-name: Publish private OHdio release
+name: Publish OhLibre release
 
 on:
   workflow_call:
@@ -12,11 +12,15 @@ on:
       run_id:
         type: string
         required: true
+    secrets:
+      DOCKERHUB_USERNAME:
+        required: true
+      DOCKERHUB_TOKEN:
+        required: true
 
 permissions:
   actions: read
   contents: write
-  packages: write
 
 jobs:
   release:
@@ -36,39 +40,16 @@ jobs:
           ref: ${{ inputs.ref }}
           persist-credentials: false
       - uses: dcarbone/install-jq-action@v4.0.1
-      - uses: actions/download-artifact@v8
-        with:
-          pattern: ohdio-linux-*
-          merge-multiple: true
-          path: release-assets
-          run-id: ${{ inputs.run_id }}
-          github-token: ${{ github.token }}
-      - name: Record the release version in the tested images
-        env:
-          VERSION: ${{ inputs.version }}
-        run: |
-          set -euo pipefail
-          if [[ -f .github/scripts/stamp-image-version.sh ]]; then
-            for arch in amd64 arm64; do
-              archive="release-assets/ohlibre-linux-$arch.tar.gz"
-              docker image load --platform "linux/$arch" -i "$archive"
-              bash .github/scripts/stamp-image-version.sh "$VERSION" "$arch"
-              docker image save ohlibre:local | gzip -c > "$archive.tmp"
-              mv "$archive.tmp" "$archive"
-              docker image rm ohlibre:local
-            done
-          else
-            echo "::warning::Legacy commit has no startup version support; publishing its original tested images."
-          fi
-      - name: Publish to the private GitHub repository
+      - name: Prepare the GitHub release
         id: publish
         env:
           GH_TOKEN: ${{ github.token }}
           VERSION: ${{ inputs.version }}
           TARGET_SHA: ${{ inputs.ref }}
+          DOCKERHUB_USERNAME: ${{ secrets.DOCKERHUB_USERNAME }}
         run: |
           set -euo pipefail
-          [[ "$(gh api "repos/$GITHUB_REPOSITORY" --jq .private)" == true ]]
+          [[ "$DOCKERHUB_USERNAME" =~ ^[a-z0-9][a-z0-9_-]*$ ]]
           [[ "$TARGET_SHA" =~ ^[0-9a-f]{40}$ ]]
           flags=()
           base="$VERSION"
@@ -96,16 +77,11 @@ jobs:
             echo "Expected a reserved tag for $tag." >&2
             exit 1
           fi
-          if [[ -f .github/scripts/local-compose.sh ]]; then
-            bash .github/scripts/local-compose.sh docker-compose.yml > release-assets/compose.yml
-          else
-            sed -e '/^    build: /d' -e 's/    pull_policy: build/    pull_policy: never/' \
-              docker-compose.yml > release-assets/compose.yml
-          fi
-          (cd release-assets && sha256sum ohlibre-linux-{amd64,arm64}.tar.gz compose.yml > SHA256SUMS)
-          bash .github/scripts/registry-compose.sh release-assets/compose.yml \
-            "${GITHUB_REPOSITORY_OWNER,,}" > release-assets/docker-compose.ghcr.yml
-          (cd release-assets && sha256sum docker-compose.ghcr.yml >> SHA256SUMS)
+          mkdir -p release-assets
+          bash .github/scripts/local-compose.sh docker-compose.yml > "$RUNNER_TEMP/local-compose.yml"
+          bash .github/scripts/registry-compose.sh "$RUNNER_TEMP/local-compose.yml" \
+            "$DOCKERHUB_USERNAME" > release-assets/docker-compose.yml
+          (cd release-assets && sha256sum docker-compose.yml > SHA256SUMS)
           if release="$(gh api "repos/$GITHUB_REPOSITORY/releases/tags/$tag" 2>"$RUNNER_TEMP/release-error")"; then
             release_draft="$(jq -r '.draft' <<< "$release")"
             if [[ "$release_draft" == true ]]; then
@@ -114,7 +90,7 @@ jobs:
               exit 0
             fi
             echo "Release $tag is already published; validating its assets."
-            assets=(ohlibre-linux-{amd64,arm64}.tar.gz compose.yml docker-compose.ghcr.yml SHA256SUMS)
+            assets=(docker-compose.yml SHA256SUMS)
             problems="$(jq -r '
               . as $release |
               ($ARGS.positional[] as $name |
@@ -133,15 +109,15 @@ jobs:
           fi
           gh release create "$tag" release-assets/* --repo "$GITHUB_REPOSITORY" \
             --target "$TARGET_SHA" --title "$tag" --generate-notes --draft "${flags[@]}"
-  ghcr:
+  dockerhub:
     needs: release
     runs-on: [self-hosted, Linux, X64]
     timeout-minutes: 20
     permissions:
-      contents: write
-      packages: write
+      actions: read
+      contents: read
     concurrency:
-      group: ghcr-ohdio-${{ contains(inputs.version, '-beta.') && 'beta' || 'stable' }}
+      group: dockerhub-ohlibre-${{ contains(inputs.version, '-beta.') && 'beta' || 'stable' }}
       cancel-in-progress: false
       queue: max
     steps:
@@ -151,23 +127,41 @@ jobs:
           persist-credentials: false
       - uses: dcarbone/install-jq-action@v4.0.1
       - uses: docker/setup-buildx-action@v3
-      - name: Download the published release assets
+      - name: Download the tested images
+        uses: actions/download-artifact@v8
+        with:
+          pattern: ohdio-linux-*
+          merge-multiple: true
+          path: release-assets
+          run-id: ${{ inputs.run_id }}
+          github-token: ${{ github.token }}
+      - name: Record the release version in the tested images
         env:
-          GH_TOKEN: ${{ github.token }}
           VERSION: ${{ needs.release.outputs.version }}
         run: |
           set -euo pipefail
-          mkdir -p release-assets
-          gh release download "$VERSION" --repo "$GITHUB_REPOSITORY" --dir release-assets
-          (cd release-assets && sha256sum --check SHA256SUMS)
-      - name: Push the tested images to private GHCR
+          for arch in amd64 arm64; do
+            archive="release-assets/ohlibre-linux-$arch.tar.gz"
+            docker image load --platform "linux/$arch" -i "$archive"
+            bash .github/scripts/stamp-image-version.sh "$VERSION" "$arch"
+            docker image save ohlibre:local | gzip -c > "$archive.tmp"
+            mv "$archive.tmp" "$archive"
+            docker image rm ohlibre:local
+          done
+      - name: Push the tested images to Docker Hub
         env:
           GH_TOKEN: ${{ github.token }}
           VERSION: ${{ needs.release.outputs.version }}
+          DOCKERHUB_USERNAME: ${{ secrets.DOCKERHUB_USERNAME }}
+          DOCKERHUB_TOKEN: ${{ secrets.DOCKERHUB_TOKEN }}
         run: |
           set -euo pipefail
-          [[ "$(gh api "repos/$GITHUB_REPOSITORY" --jq .private)" == true ]]
-          echo "$GH_TOKEN" | docker login ghcr.io -u "$GITHUB_ACTOR" --password-stdin
+          [[ "$DOCKERHUB_USERNAME" =~ ^[a-z0-9][a-z0-9_-]*$ ]]
+          [[ -n "$DOCKERHUB_TOKEN" ]]
+          export DOCKER_CONFIG
+          DOCKER_CONFIG="$(mktemp -d "$RUNNER_TEMP/dockerhub.XXXXXX")"
+          trap 'rm -f "$DOCKER_CONFIG/config.json"; rmdir "$DOCKER_CONFIG"' EXIT
+          printf '%s' "$DOCKERHUB_TOKEN" | docker login -u "$DOCKERHUB_USERNAME" --password-stdin
           channel=latest
           pattern='^[0-9]+\.[0-9]+\.[0-9]+$'
           if [[ "$VERSION" == *-beta.* ]]; then
@@ -177,17 +171,17 @@ jobs:
           releases="$(gh api --paginate "repos/$GITHUB_REPOSITORY/releases?per_page=100" \
             --jq '.[] | select(.draft == false) | .tag_name')"
           current_channel_version="$(printf '%s\n' "$releases" | grep -E "$pattern" | sort -V | tail -n 1 || true)"
-          bash .github/scripts/publish-ghcr.sh \
-            "ghcr.io/${GITHUB_REPOSITORY_OWNER,,}/ohlibre" "$VERSION" \
+          bash .github/scripts/publish-dockerhub.sh \
+            "$DOCKERHUB_USERNAME/ohlibre" "$VERSION" \
             release-assets "$current_channel_version"
   publish:
-    needs: [release, ghcr]
+    needs: [release, dockerhub]
     runs-on: [self-hosted, Linux, X64]
     timeout-minutes: 5
     permissions:
       contents: write
     steps:
-      - name: Publish the release after GHCR succeeds
+      - name: Publish the release after Docker Hub succeeds
         env:
           GH_TOKEN: ${{ github.token }}
           VERSION: ${{ needs.release.outputs.version }}

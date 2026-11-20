@@ -11,7 +11,6 @@ on:
 permissions:
   actions: read
   contents: write
-  packages: write
 
 concurrency:
   group: publish-main-beta
@@ -58,6 +57,9 @@ jobs:
               enabled=true
             fi
             [[ "$enabled" == true ]] || continue
+            if ! git cat-file -e "$sha:.github/scripts/publish-dockerhub.sh" 2>/dev/null; then
+              continue
+            fi
             pending="beta-publish-pending-$sha"
             if [[ -n "${released[$sha]:-}" ]] && ! git show-ref --verify --quiet "refs/tags/$pending"; then
               continue
@@ -114,6 +116,9 @@ jobs:
       version: ${{ needs.select.outputs.version }}
       ref: ${{ needs.select.outputs.sha }}
       run_id: ${{ needs.select.outputs.run_id }}
+    secrets:
+      DOCKERHUB_USERNAME: ${{ secrets.DOCKERHUB_USERNAME }}
+      DOCKERHUB_TOKEN: ${{ secrets.DOCKERHUB_TOKEN }}
   finish:
     if: always() && needs.select.outputs.sha != ''
     needs: [select, publish]

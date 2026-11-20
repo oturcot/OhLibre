@@ -7,15 +7,15 @@ serveur existant pour lire le dossier de stockage.
 
 ## Démarrer depuis le dépôt
 
-Connecte Docker au paquet GHCR privé comme indiqué plus bas, puis lance la
-version stable dans le dossier du projet :
+Remplace `your-dockerhub-username` dans le Compose par le nom du compte Docker
+Hub qui publie l'image, puis lance la version stable dans le dossier du projet :
 
 ```sh
 docker compose up -d
 docker compose logs -f ohdio
 ```
 
-Ce Compose utilise `ghcr.io/oturcot/ohlibre:latest` et ne
+Ce Compose utilise `your-dockerhub-username/ohlibre:latest` et ne
 construit pas d'image locale. Pour tester une modification du code, construis
 l'image avec `docker build -t ohlibre:local .`.
 
@@ -108,7 +108,7 @@ Pour les PR d'autres personnes, une approbation
 du propriétaire sur le commit courant démarre les tests; une nouvelle
 modification nécessite une nouvelle approbation.
 
-## Installer depuis une release privée
+## Publication
 
 Chaque commit sur `main` dont la CI réussit produit une prérelease numérotée
 et l'image `beta`. Le répartiteur reprend les publications après la CI,
@@ -144,52 +144,27 @@ Au démarrage, le journal indique cette version; une image construite
 localement indique `développement`.
 Le workflow reprend les brouillons incomplets; une release déjà
 publiée ne voit pas ses fichiers remplacés. Les releases sont finalisées
-après publication dans GHCR privé. Configurer `RELEASE_BOT_TOKEN` avec accès
-en écriture au contenu, aux PR, aux Actions et aux workflows; `GITHUB_TOKEN`
-sert à la publication GHCR. Protéger `main` et `stable` en exigeant une
+après publication sur Docker Hub. Configurer `RELEASE_BOT_TOKEN` avec accès
+en écriture au contenu, aux PR, aux Actions et aux workflows, ainsi que les
+secrets `DOCKERHUB_USERNAME` et `DOCKERHUB_TOKEN` pour Docker Hub.
+Créer le dépôt Docker Hub `ohlibre` dans ce compte et le rendre public : la
+publication vérifie l'accès anonyme. Les images ne sont plus jointes aux
+releases GitHub; seuls le Compose et sa somme de contrôle y sont conservés.
+Les anciens commits antérieurs à la migration Docker Hub ne sont pas repris
+par le répartiteur. Protéger `main` et `stable` en exigeant une
 révision et le statut `CI / gated tests`, avec une dérogation pour le bot
 utilisé pour les PR de dépendances; le workflow ne fusionne automatiquement
-que ces PR. Les règles GitHub du dépôt privé doivent prendre
+que ces PR. Les règles GitHub du dépôt doivent prendre
 en charge ces protections. Lors de la première installation, promouvoir ce
 workflow sur `stable` avant de compter sur les promotions automatiques.
 
-Depuis la même release, télécharge `compose.yml`, `SHA256SUMS` et l'archive
-correspondant à ta machine : `ohlibre-linux-amd64.tar.gz` pour
-Intel/AMD, ou `ohlibre-linux-arm64.tar.gz` pour ARM (dont les
-Mac Apple Silicon). Place les fichiers dans le même dossier, puis :
+## Mettre à jour depuis Docker Hub
 
-```sh
-# Exemple pour ARM : remplace arm64 par amd64 sur une machine Intel/AMD.
-grep -E ' (ohlibre-linux-arm64.tar.gz|compose.yml)$' SHA256SUMS | shasum -c
-docker image load -i ohlibre-linux-arm64.tar.gz
-docker compose up -d
-```
-
-Le Compose de la release utilise uniquement l'image chargée localement.
-
-## Mettre à jour depuis GHCR privé
-
-GitHub Actions publie `ghcr.io/oturcot/ohlibre` sans secret
-supplémentaire côté CI. Utilise `latest` pour les stables, `beta` pour les
-bêtas de `main`, ou un numéro de version pour rester sur cette version.
-`latest` n'existe pas avant la première release stable. Le paquet doit rester
-privé. Le Compose GHCR ne contient aucun identifiant.
-
-Sur l'hôte Docker, crée un [jeton GitHub classique `read:packages`](https://github.com/settings/tokens/new?scopes=read:packages)
-pour un compte avec accès au paquet. Pour le saisir sans l'afficher dans Bash :
-
-```bash
-read -rs -p "Jeton GitHub Packages : " token; printf '\n'
-printf '%s' "$token" | docker login ghcr.io -u TON_UTILISATEUR_GITHUB --password-stdin
-unset token
-```
-
-Utilise le magasin d'identifiants de Docker. Enregistre l'asset
-`docker-compose.ghcr.yml` de la release sous `docker-compose.yml` dans un
-dossier de déploiement séparé du clone. Pour garder la bibliothèque existante,
-indique son chemin hôte absolu dans le `.env` du déploiement, sans démarrer deux
-conteneurs sur le même dossier. Pour suivre les bêtas avant la première stable,
-ajoute `OHDIO_TAG=beta` à ce `.env`.
+Utilise `latest` pour les stables, `beta` pour les bêtas de `main`, ou un
+numéro de version pour rester sur cette version. `latest` n'existe pas avant
+la première release stable. Le Compose joint à la release contient le nom du
+compte Docker Hub; pour suivre les bêtas, ajoute `OHDIO_TAG=beta` dans `.env`.
+Conserve le même dossier hôte sans démarrer deux conteneurs sur ce dossier.
 
 ```sh
 docker compose up -d
@@ -197,11 +172,8 @@ docker compose up -d
 
 Compose ne surveille pas le registre quand le conteneur tourne. Pour les
 mises à jour périodiques, fais exécuter la commande suivante par `cron` ou
-`systemd` dans le dossier du Compose, sous le même compte que `docker login` :
+`systemd` dans le dossier du Compose :
 
 ```sh
 docker compose pull && docker compose up -d --pull never
 ```
-
-
-test
