@@ -149,9 +149,7 @@ jobs:
           VERSION: ${{ needs.release.outputs.version }}
         run: |
           set -euo pipefail
-          release="$(gh api "repos/$GITHUB_REPOSITORY/releases/tags/$VERSION")"
-          if [[ "$(jq -r .draft <<< "$release")" == true ]]; then
-            release_id="$(jq -r .id <<< "$release")"
-            gh api --method PATCH "repos/$GITHUB_REPOSITORY/releases/$release_id" \
-              -F draft=false >/dev/null
+          release_draft="$(gh release view "$VERSION" --repo "$GITHUB_REPOSITORY" --json isDraft --jq .isDraft)"
+          if [[ "$release_draft" == true ]]; then
+            gh release edit "$VERSION" --repo "$GITHUB_REPOSITORY" --draft=false
           fi
