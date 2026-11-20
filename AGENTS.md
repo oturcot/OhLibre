@@ -5,6 +5,6 @@
 - Garder séparés le fournisseur OHdio, le calendrier en `America/Toronto` et la publication audio avec FFmpeg.
 - Vérifier les émissions programmées toutes les cinq minutes après la fin du segment attendu; pour les balados sans horaire, vérifier quatre fois par jour.
 - Publier le premier segment disponible, puis remplacer atomiquement le même fichier par la version fusionnée dans l'ordre de diffusion. Persister les identifiants des épisodes et segments; ignorer les rediffusions détectables.
-- Tester les six émissions sur les PR, sur `main` et avant les releases. Pour l'instant, utiliser exclusivement les runners hébergés par GitHub; ne pas configurer le runner macOS auto-hébergé.
+- Tester les six émissions sur les PR, sur `main` et avant les releases. Tous les jobs GitHub Actions utilisent le runner auto-hébergé Linux x64 avec les labels `self-hosted`, `Linux` et `X64`. Docker Engine et Docker Compose doivent être accessibles au compte du runner; conserver la prise en charge des archives amd64 et arm64.
 - Joindre l'image Docker et le Compose aux releases du dépôt privé. Publier les mêmes images uniquement dans le paquet GHCR privé du projet, via `GITHUB_TOKEN`. Ne jamais rendre le paquet public ni publier sur Docker Hub. Documenter toute étape externe requise dans une issue assignée à `oturcot`.
 - Ne pas ajouter de serveur ou de fonctionnalité hors périmètre sans approbation. Vérifier le contrat OHdio sur les pages publiques et garder les tests déterministes indépendants du réseau.
