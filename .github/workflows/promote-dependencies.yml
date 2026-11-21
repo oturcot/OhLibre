@@ -66,10 +66,15 @@ jobs:
               -c user.email='41898282+github-actions[bot]@users.noreply.github.com' \
               merge --squash --no-commit FETCH_HEAD
           fi
-          git -C source diff --binary "$MERGE_SHA^1" "$MERGE_SHA" -- \
-            Dockerfile .github/python-image-digest .github/workflows/ > "$RUNNER_TEMP/dependencies.patch"
-          test -s "$RUNNER_TEMP/dependencies.patch"
-          git -C stable apply --3way "$RUNNER_TEMP/dependencies.patch"
+      - name: Prepare stable dependency changes
+        uses: actions/github-script@v9
+        env:
+          MERGE_SHA: ${{ github.event.pull_request.merge_commit_sha }}
+        with:
+          script: |
+            require('./source/.github/scripts/promote-dependencies.js').promote({
+              source: 'source', stable: 'stable', sha: process.env.MERGE_SHA
+            });
       - uses: peter-evans/create-pull-request@3ffccacd46053766916f087ce41d627c0b8cf2d1
         with:
           path: stable
@@ -79,5 +84,5 @@ jobs:
           base: stable
           commit-message: "chore: promote tested dependencies"
           title: "Promote tested dependencies to stable"
-          body: "Promotes only dependency changes tested on main. CI must pass before merge."
+          body: "Promotes tested dependencies and, when needed, migrates stable release automation to Docker Hub. CI must pass before merge."
           labels: dependencies
