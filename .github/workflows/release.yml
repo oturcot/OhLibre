@@ -29,8 +29,10 @@ concurrency:
 jobs:
   test:
     if: >-
-      (github.event_name == 'workflow_dispatch' && github.ref == 'refs/heads/stable') ||
+      (github.event_name == 'workflow_dispatch' && github.ref == 'refs/heads/stable' &&
+       github.actor == github.repository_owner) ||
       (github.event_name == 'pull_request' && github.event.pull_request.merged == true &&
+       (github.actor == github.repository_owner || github.actor == 'dependabot[bot]') &&
        github.event.pull_request.head.repo.full_name == github.repository &&
        (github.event.pull_request.head.ref == 'main' ||
         (github.event.pull_request.head.ref == 'automation/promote-dependency-release' &&

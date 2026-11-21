@@ -10,22 +10,13 @@ permissions:
 
 jobs:
   assign:
+    if: github.event.issue.user.login == github.repository_owner
     runs-on: [self-hosted, Linux, X64]
 
     steps:
       - name: Assign Copilot
-        if: github.event.issue.user.login == github.repository_owner
         env:
           GH_TOKEN: ${{ secrets.ISSUE_BOT_TOKEN }}
         run: |
           gh issue edit ${{ github.event.issue.number }} --repo "$GITHUB_REPOSITORY" \
             --add-assignee "@copilot"
-
-      - name: Assign issue to repository owner
-        if: github.event.issue.user.login != github.repository_owner
-        env:
-          GH_TOKEN: ${{ secrets.ISSUE_BOT_TOKEN }}
-          REPOSITORY_OWNER: ${{ github.repository_owner }}
-        run: |
-          gh issue edit ${{ github.event.issue.number }} --repo "$GITHUB_REPOSITORY" \
-            --add-assignee "$REPOSITORY_OWNER"

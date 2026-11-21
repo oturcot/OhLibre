@@ -21,8 +21,12 @@ jobs:
   select:
     if: >-
       (github.event_name == 'workflow_run' && github.event.workflow_run.event == 'push' &&
-       github.event.workflow_run.head_branch == 'main') ||
-      (github.event_name != 'workflow_run' && github.ref == 'refs/heads/main')
+       github.event.workflow_run.head_branch == 'main' &&
+       (github.event.workflow_run.actor.login == github.repository_owner ||
+        github.event.workflow_run.actor.login == 'dependabot[bot]')) ||
+      (github.event_name == 'schedule' && github.ref == 'refs/heads/main') ||
+      (github.event_name == 'workflow_dispatch' && github.ref == 'refs/heads/main' &&
+       github.actor == github.repository_owner)
     runs-on: [self-hosted, Linux, X64]
     outputs:
       sha: ${{ steps.select.outputs.sha }}

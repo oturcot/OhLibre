@@ -51,6 +51,9 @@ Suivre aussi les instructions de [AGENTS.md](../AGENTS.md).
 - Les PR autorisées exécutent les tests applicatifs et réseau sans construire
   d'image ni créer de conteneur. Pour une PR externe, le propriétaire doit
   approuver le commit courant; un nouveau commit exige une nouvelle approbation.
+  Les protections GitHub décrites dans le README sont indispensables : un
+  workflow proposé par une PR ne peut pas protéger lui-même le runner.
+  Les issues externes ne déclenchent pas d'assignation automatique sur le runner.
 - Après fusion et avant les releases, construire, recharger et tester les images
   amd64 et arm64 ainsi que le montage hôte. Tous les jobs utilisent le runner
   auto-hébergé Linux x64; Docker Engine, Docker Compose, FFmpeg et `ffprobe`
