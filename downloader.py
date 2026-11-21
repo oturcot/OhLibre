@@ -28,6 +28,7 @@ class Schedule:
     parts: int = 1
     radio: bool = True
     title_prefix: str = ""
+    name: str = ""
 
     def accepts(self, episode: Episode) -> bool:
         return episode.title.casefold().startswith(self.title_prefix)
@@ -50,12 +51,13 @@ class Schedule:
 
 
 SCHEDULES = {
-    "6056": Schedule(range(4), time(20), "20:00"),
-    "12879": Schedule((4,), time(19, 30), "19:30", radio=False, title_prefix="épisode complet"),
-    "3858": Schedule(range(5), time(12, 10), "13:00", parts=2),
-    "302": Schedule(range(5), time(5, 30), "05:30"),
-    "3855": Schedule(range(4), time(18, 55), "20:30"),
-    "52": Schedule((6,), time(13, 6), "14:00", parts=2),
+    "6056": Schedule(range(4), time(20), "20:00", name="Moteur de recherche"),
+    "12879": Schedule((4,), time(19, 30), "19:30", radio=False,
+                      title_prefix="épisode complet", name="Moteur en herbe"),
+    "3858": Schedule(range(5), time(12, 10), "13:00", parts=2, name="Midi info"),
+    "302": Schedule(range(5), time(5, 30), "05:30", name="À la une"),
+    "3855": Schedule(range(4), time(18, 55), "20:30", name="Aujourd'hui l'histoire"),
+    "52": Schedule((6,), time(13, 6), "14:00", parts=2, name="Les années lumière"),
 }
 
 
@@ -88,6 +90,7 @@ def next_balado(now: datetime) -> datetime:
 
 def run(show: str, root: Path, stop: Event, once: bool) -> None:
     schedule = SCHEDULES.get(show)
+    show_name = schedule.name if schedule else "nom inconnu"
     library = Library(root, show)
     startup = True
     while not stop.is_set():
@@ -100,8 +103,10 @@ def run(show: str, root: Path, stop: Event, once: bool) -> None:
         if startup or active or schedule is None or title_due:
             items = None
             try:
-                logging.info("Vérification de l'émission %s", show)
                 items = discover(show, schedule.radio if schedule else False)
+                if items:
+                    show_name = items[0].show_title
+                logging.info("Vérification de l'émission %s", show_name)
                 if schedule and slot:
                     episode = select_scheduled(items, schedule, slot.date())
                     complete = episode is not None and library.publish(
@@ -113,7 +118,7 @@ def run(show: str, root: Path, stop: Event, once: bool) -> None:
             except (OSError, KeyError, TypeError, ValueError, subprocess.SubprocessError) as error:
                 if once:
                     raise
-                logging.warning("Émission %s : %s", show, error)
+                logging.warning("Émission %s : %s", show_name, error)
                 complete = False
             library.refresh_titles(items, datetime.now(TORONTO))
             if active and not complete:
