@@ -1,11 +1,11 @@
 services:
   ohdio:
-    image: ghcr.io/oturcot/radio-canada-podcast:latest
+    image: oturcot/ohlibre:latest
     restart: unless-stopped
     environment:
       OHDIO_SHOWS: "6056,12879,3858,302,3855,52"
       OHDIO_OUTPUT: /podcasts
     volumes:
       - type: bind
-        source: ${PODCAST_DIR:-./podcasts}
+        source: ./podcasts # Remplacer par le dossier de la bibliothèque sur l'hôte.
         target: /podcasts

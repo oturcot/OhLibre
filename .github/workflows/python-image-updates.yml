@@ -2,7 +2,8 @@ name: Update Python image
 
 on:
   schedule:
-    - cron: '21 5 * * *'
+    - cron: '0 6 * * *'
+      timezone: America/Montreal
   workflow_dispatch:
 
 permissions:
@@ -14,17 +15,21 @@ concurrency:
 
 jobs:
   update:
-    if: github.ref == 'refs/heads/main'
-    runs-on: ubuntu-latest
+    if: >-
+      github.ref == 'refs/heads/main' &&
+      (github.event_name == 'schedule' || github.actor == github.repository_owner)
+    runs-on: [self-hosted, Linux, X64]
     steps:
       - uses: actions/checkout@v7
         with:
           ref: main
           persist-credentials: false
+      - uses: dcarbone/install-jq-action@v4.0.1
+      - uses: docker/setup-buildx-action@v3
       - name: Record the current official image digest
         run: |
           set -euo pipefail
-          digest="$(docker buildx imagetools inspect python:latest --format '{{json .Manifest.Digest}}' | jq -r .)"
+          digest="$(docker buildx imagetools inspect python:3.13-slim --format '{{json .Manifest.Digest}}' | jq -r .)"
           [[ "$digest" =~ ^sha256:[0-9a-f]{64}$ ]]
           printf '%s\n' "$digest" > .github/python-image-digest
       - uses: peter-evans/create-pull-request@3ffccacd46053766916f087ce41d627c0b8cf2d1

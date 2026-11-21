@@ -16,48 +16,56 @@ jobs:
       matrix:
         include:
           - arch: amd64
-            runner: ubuntu-latest
           - arch: arm64
-            runner: ubuntu-24.04-arm
-    runs-on: ${{ matrix.runner }}
+    runs-on: [self-hosted, Linux, X64]
     timeout-minutes: 25
     steps:
       - uses: actions/checkout@v7
         with:
           ref: ${{ inputs.ref || github.sha }}
           persist-credentials: false
+      - uses: actions/checkout@v7
+        with:
+          ref: ${{ github.workflow_sha }}
+          path: .workflow-code
+          persist-credentials: false
+      - uses: dcarbone/install-jq-action@v4.0.1
+      - uses: docker/setup-qemu-action@v3
+        if: matrix.arch == 'arm64'
+      - uses: docker/setup-buildx-action@v3
       - name: Build and verify the image archive
         env:
           ARCH: ${{ matrix.arch }}
         run: |
           set -euo pipefail
-          docker build --pull -t radio-canada-podcast:local .
-          archive="radio-canada-podcast-linux-$ARCH.tar.gz"
-          docker image save radio-canada-podcast:local | gzip -c > "$archive"
-          docker image rm radio-canada-podcast:local
+          docker buildx build --pull --platform "linux/$ARCH" --load \
+            -t ohlibre:local .
+          archive="ohlibre-linux-$ARCH.tar.gz"
+          docker image save ohlibre:local | gzip -c > "$archive"
+          docker image rm ohlibre:local
           docker image load -i "$archive"
           docker run --rm -e OHDIO_LIVE_TEST=1 \
             -v "$PWD/tests:/app/tests:ro" --entrypoint python \
-            radio-canada-podcast:local -m unittest discover -s tests -v
+            ohlibre:local -m unittest discover -s tests -v
           bash .github/scripts/local-compose.sh docker-compose.yml > release-compose.yml
           docker compose -f release-compose.yml config -q
           docker compose -f release-compose.yml run --rm --no-deps ohdio --help
           bash .github/scripts/registry-compose.sh release-compose.yml "${GITHUB_REPOSITORY_OWNER,,}" > registry-compose.yml
           docker compose -f registry-compose.yml config --format json | jq -e \
-            --arg image "ghcr.io/${GITHUB_REPOSITORY_OWNER,,}/radio-canada-podcast:latest" \
+            --arg image "${GITHUB_REPOSITORY_OWNER,,}/ohlibre:latest" \
             '.services.ohdio | .image == $image and .pull_policy == "always" and
              .build == null and any(.volumes[]; .type == "bind" and .target == "/podcasts")'
-      - uses: actions/upload-artifact@v7
-        with:
-          name: ohdio-linux-${{ matrix.arch }}
-          path: radio-canada-podcast-linux-${{ matrix.arch }}.tar.gz
-          if-no-files-found: error
-          compression-level: 0
-          retention-days: 30
       - name: Verify the release version in the image
         env:
           ARCH: ${{ matrix.arch }}
         run: |
           bash .github/scripts/stamp-image-version.sh 0.0.0-beta.0 "$ARCH"
-          docker run --rm --entrypoint python radio-canada-podcast:local \
+          docker run --rm --entrypoint python ohlibre:local \
             -c 'import os; assert os.environ["OHDIO_VERSION"] == "0.0.0-beta.0"'
+      - name: Keep the tested archive on the runner
+        env:
+          ARCH: ${{ matrix.arch }}
+          TARGET_SHA: ${{ inputs.ref || github.sha }}
+        run: |
+          bash .workflow-code/.github/scripts/image-archives.sh store "$GITHUB_RUN_ID" \
+            "$TARGET_SHA" "$ARCH" "ohlibre-linux-$ARCH.tar.gz"

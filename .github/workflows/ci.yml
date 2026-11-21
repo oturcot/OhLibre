@@ -24,29 +24,32 @@ concurrency:
 
 jobs:
   authorize:
-    runs-on: ubuntu-latest
+    if: >-
+      (github.event_name == 'pull_request' &&
+       (github.actor == github.repository_owner || github.actor == 'dependabot[bot]') &&
+       (github.event.pull_request.user.login == github.repository_owner ||
+        (github.event.pull_request.head.repo.full_name == github.repository &&
+         (github.event.pull_request.user.login == 'dependabot[bot]' ||
+          github.event.pull_request.head.ref == 'automation/promote-dependency-release' ||
+          github.event.pull_request.head.ref == 'automation/update-python-image')))) ||
+      (github.event_name == 'pull_request_review' &&
+       github.event.review.user.login == github.repository_owner &&
+       github.event.review.state == 'approved' &&
+       github.event.review.commit_id == github.event.pull_request.head.sha) ||
+      (github.event_name == 'push' &&
+       (github.actor == github.repository_owner || github.actor == 'dependabot[bot]')) ||
+      (github.event_name == 'workflow_dispatch' && github.actor == github.repository_owner) ||
+      github.event_name == 'merge_group'
+    runs-on: [self-hosted, Linux, X64]
     outputs:
       allowed: ${{ steps.check.outputs.allowed }}
       ref: ${{ steps.check.outputs.ref }}
     steps:
       - id: check
         env:
-          ALLOWED: >-
-            ${{ github.event_name == 'push' || github.event_name == 'merge_group' ||
-                github.event_name == 'workflow_dispatch' ||
-                (github.event_name == 'pull_request' &&
-                  (github.event.pull_request.user.login == github.repository_owner ||
-                   (github.event.pull_request.head.repo.full_name == github.repository &&
-                    (github.event.pull_request.user.login == 'dependabot[bot]' ||
-                     github.event.pull_request.head.ref == 'automation/promote-dependency-release' ||
-                     github.event.pull_request.head.ref == 'automation/update-python-image')))) ||
-                (github.event_name == 'pull_request_review' &&
-                 github.event.review.user.login == github.repository_owner &&
-                 github.event.review.state == 'approved' &&
-                 github.event.review.commit_id == github.event.pull_request.head.sha) }}
           REF: ${{ github.event.review.commit_id || github.event.pull_request.head.sha || github.sha }}
         run: |
-          echo "allowed=$ALLOWED" >> "$GITHUB_OUTPUT"
+          echo "allowed=true" >> "$GITHUB_OUTPUT"
           echo "ref=$REF" >> "$GITHUB_OUTPUT"
   ohdio:
     needs: authorize
@@ -54,8 +57,10 @@ jobs:
     uses: ./.github/workflows/test-ohdio.yml
     with:
       ref: ${{ needs.authorize.outputs.ref }}
+      test-images: ${{ github.event_name != 'pull_request' && github.event_name != 'pull_request_review' && github.event_name != 'merge_group' }}
   archives:
     needs: ohdio
+    if: github.event_name != 'pull_request' && github.event_name != 'pull_request_review' && github.event_name != 'merge_group'
     uses: ./.github/workflows/package-ohdio.yml
     with:
       ref: ${{ github.event.review.commit_id || github.event.pull_request.head.sha || github.sha }}
@@ -63,9 +68,16 @@ jobs:
     name: Gated tests
     if: always() && needs.authorize.outputs.allowed == 'true'
     needs: [authorize, ohdio, archives]
-    runs-on: ubuntu-latest
+    runs-on: [self-hosted, Linux, X64]
     env:
       TEST_RESULT: ${{ needs.ohdio.result }}
       ARCHIVE_RESULT: ${{ needs.archives.result }}
+      EVENT_NAME: ${{ github.event_name }}
     steps:
-      - run: test "$TEST_RESULT" = success && test "$ARCHIVE_RESULT" = success
+      - run: |
+          test "$TEST_RESULT" = success
+          if [[ "$EVENT_NAME" == pull_request || "$EVENT_NAME" == pull_request_review || "$EVENT_NAME" == merge_group ]]; then
+            test "$ARCHIVE_RESULT" = skipped
+          else
+            test "$ARCHIVE_RESULT" = success
+          fi

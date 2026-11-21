@@ -6,13 +6,50 @@ on:
       ref:
         type: string
         default: ''
+      test-images:
+        type: boolean
+        default: true
 
 permissions:
   contents: read
 
 jobs:
   test:
-    runs-on: ubuntu-latest
+    runs-on: [self-hosted, Linux, X64]
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          ref: ${{ inputs.ref || github.sha }}
+          persist-credentials: false
+      - uses: actions/setup-python@v6
+        with:
+          python-version: '3.13'
+      - name: Test CI authorization conditions
+        uses: actions/github-script@v9
+        with:
+          script: require('./.github/scripts/test-ci-authorization.js')
+      - name: Test dependency merge
+        uses: actions/github-script@v9
+        with:
+          script: await require('./.github/scripts/test-dependency-merge.js')
+      - name: Test dependency promotion
+        uses: actions/github-script@v9
+        with:
+          script: require('./.github/scripts/test-promote-dependencies.js')
+      - uses: dcarbone/install-jq-action@v4.0.1
+      - run: |
+          command -v ffmpeg
+          command -v ffprobe
+          bash .github/scripts/test-release-version.sh
+          bash .github/scripts/test-publish-dockerhub.sh
+          bash .github/scripts/test-image-archives.sh
+          docker compose config -q
+          OHDIO_LIVE_TEST=1 python -m unittest discover -s tests -v
+  image:
+    if: inputs.test-images
+    needs: test
+    runs-on: [self-hosted, Linux, X64]
     timeout-minutes: 20
     steps:
       - uses: actions/checkout@v7
@@ -20,21 +57,18 @@ jobs:
           ref: ${{ inputs.ref || github.sha }}
           persist-credentials: false
       - run: |
-          bash .github/scripts/test-release-version.sh
-          bash .github/scripts/test-publish-ghcr.sh
-          docker compose config -q
-          docker build --pull -t radio-canada-podcast:local .
-          docker run --rm -e OHDIO_LIVE_TEST=1 \
-            -v "$PWD/tests:/app/tests:ro" --entrypoint python \
-            radio-canada-podcast:local -m unittest discover -s tests -v
+          docker build --pull -t ohlibre:local .
+          docker run --rm --entrypoint python ohlibre:local -c \
+            'from datetime import datetime, timezone; winter = datetime(2026, 1, 1, 12, tzinfo=timezone.utc).astimezone(); summer = datetime(2026, 7, 1, 12, tzinfo=timezone.utc).astimezone(); assert (winter.hour, summer.hour) == (7, 8), (winter, summer)'
       - name: Verify the writable host bind mount
         run: |
           mount_root="$(mktemp -d "$PWD/.bind-test.XXXXXX")"
-          export PODCAST_DIR="$mount_root/podcast library"
-          trap 'rm -f "$PODCAST_DIR/from-host" "$PODCAST_DIR/from-container"; rmdir "$PODCAST_DIR" "$mount_root"' EXIT
-          mkdir -p "$PODCAST_DIR"
-          printf 'host\n' > "$PODCAST_DIR/from-host"
-          bash .github/scripts/local-compose.sh docker-compose.yml > "$RUNNER_TEMP/local-compose.yml"
+          export BIND_TEST_DIR="$mount_root/podcast library"
+          trap 'rm -f "$BIND_TEST_DIR/from-host" "$BIND_TEST_DIR/from-container"; rmdir "$BIND_TEST_DIR" "$mount_root"' EXIT
+          mkdir -p "$BIND_TEST_DIR"
+          printf 'host\n' > "$BIND_TEST_DIR/from-host"
+          bash .github/scripts/local-compose.sh docker-compose.yml |
+            sed 's|^        source: .*|        source: ${BIND_TEST_DIR:?}|' > "$RUNNER_TEMP/local-compose.yml"
           docker compose -f "$RUNNER_TEMP/local-compose.yml" run --rm --no-deps --entrypoint sh ohdio \
             -ec 'test "$(cat /podcasts/from-host)" = host; printf "container\n" > /podcasts/from-container'
-          test "$(cat "$PODCAST_DIR/from-container")" = container
+          test "$(cat "$BIND_TEST_DIR/from-container")" = container
