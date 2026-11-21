@@ -1,7 +1,8 @@
 # OhLibre
 
 OhLibre télécharge les épisodes publics d'OHdio dans une bibliothèque locale.
-Il ne fournit pas de serveur de balados.
+Il ne fournit pas de serveur de balados. [Audiobookshelf](https://github.com/advplyr/audiobookshelf)
+offre un bon serveur de balados pour accéder à cette bibliothèque.
 
 ## Avec Docker Compose
 
