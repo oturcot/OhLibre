@@ -24,6 +24,22 @@ concurrency:
 
 jobs:
   authorize:
+    if: >-
+      (github.event_name == 'pull_request' &&
+       (github.actor == github.repository_owner || github.actor == 'dependabot[bot]') &&
+       (github.event.pull_request.user.login == github.repository_owner ||
+        (github.event.pull_request.head.repo.full_name == github.repository &&
+         (github.event.pull_request.user.login == 'dependabot[bot]' ||
+          github.event.pull_request.head.ref == 'automation/promote-dependency-release' ||
+          github.event.pull_request.head.ref == 'automation/update-python-image')))) ||
+      (github.event_name == 'pull_request_review' &&
+       github.event.review.user.login == github.repository_owner &&
+       github.event.review.state == 'approved' &&
+       github.event.review.commit_id == github.event.pull_request.head.sha) ||
+      (github.event_name == 'push' &&
+       (github.actor == github.repository_owner || github.actor == 'dependabot[bot]')) ||
+      (github.event_name == 'workflow_dispatch' && github.actor == github.repository_owner) ||
+      github.event_name == 'merge_group'
     runs-on: [self-hosted, Linux, X64]
     outputs:
       allowed: ${{ steps.check.outputs.allowed }}
@@ -31,22 +47,9 @@ jobs:
     steps:
       - id: check
         env:
-          ALLOWED: >-
-            ${{ github.event_name == 'push' || github.event_name == 'merge_group' ||
-                github.event_name == 'workflow_dispatch' ||
-                (github.event_name == 'pull_request' &&
-                  (github.event.pull_request.user.login == github.repository_owner ||
-                   (github.event.pull_request.head.repo.full_name == github.repository &&
-                    (github.event.pull_request.user.login == 'dependabot[bot]' ||
-                     github.event.pull_request.head.ref == 'automation/promote-dependency-release' ||
-                     github.event.pull_request.head.ref == 'automation/update-python-image')))) ||
-                (github.event_name == 'pull_request_review' &&
-                 github.event.review.user.login == github.repository_owner &&
-                 github.event.review.state == 'approved' &&
-                 github.event.review.commit_id == github.event.pull_request.head.sha) }}
           REF: ${{ github.event.review.commit_id || github.event.pull_request.head.sha || github.sha }}
         run: |
-          echo "allowed=$ALLOWED" >> "$GITHUB_OUTPUT"
+          echo "allowed=true" >> "$GITHUB_OUTPUT"
           echo "ref=$REF" >> "$GITHUB_OUTPUT"
   ohdio:
     needs: authorize

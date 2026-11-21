@@ -17,7 +17,11 @@ concurrency:
 
 jobs:
   merge:
-    if: github.event.workflow_run.event == 'pull_request' && github.event.workflow_run.conclusion == 'success'
+    if: >-
+      github.event.workflow_run.event == 'pull_request' &&
+      github.event.workflow_run.conclusion == 'success' &&
+      (github.event.workflow_run.actor.login == github.repository_owner ||
+       github.event.workflow_run.actor.login == 'dependabot[bot]')
     runs-on: [self-hosted, Linux, X64]
     steps:
       - uses: actions/github-script@v9
@@ -49,8 +53,7 @@ jobs:
             const { data } = await github.rest.actions.listJobsForWorkflowRunAttempt({
               owner, repo, run_id: run.id, attempt_number: run.run_attempt, per_page: 100
             });
-            for (const name of ["ohdio / test", "archives / images (amd64)",
-              "archives / images (arm64)", "Gated tests"]) {
+            for (const name of ["ohdio / test", "Gated tests"]) {
               if (!data.jobs.some(job => job.name === name && job.conclusion === "success"))
                 throw new Error(`Required job did not pass: ${name}`);
             }

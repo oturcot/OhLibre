@@ -25,6 +25,10 @@ jobs:
       - uses: actions/setup-python@v6
         with:
           python-version: '3.13'
+      - name: Test CI authorization conditions
+        uses: actions/github-script@v9
+        with:
+          script: require('./.github/scripts/test-ci-authorization.js')
       - uses: dcarbone/install-jq-action@v4.0.1
       - run: |
           command -v ffmpeg
