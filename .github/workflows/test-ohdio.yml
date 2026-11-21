@@ -29,6 +29,10 @@ jobs:
         uses: actions/github-script@v9
         with:
           script: require('./.github/scripts/test-ci-authorization.js')
+      - name: Test dependency merge
+        uses: actions/github-script@v9
+        with:
+          script: await require('./.github/scripts/test-dependency-merge.js')
       - uses: dcarbone/install-jq-action@v4.0.1
       - run: |
           command -v ffmpeg

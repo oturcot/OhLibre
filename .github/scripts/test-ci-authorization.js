@@ -67,14 +67,6 @@ assert.equal(permitted(report, {
 assert.equal(permitted(report, {
   event: { workflow_run: { event: "pull_request_review", actor: { login: "oturcot" } } },
 }), true);
-const merge = condition("merge-dependencies.yml", "merge");
-assert.equal(permitted(merge), true);
-assert.equal(permitted(merge, {
-  event: { workflow_run: { event: "pull_request", conclusion: "success", actor: { login: "contributor" } } },
-}), false);
-assert.equal(permitted(merge, {
-  event: { workflow_run: { event: "pull_request", conclusion: "success", actor: { login: "dependabot[bot]" } } },
-}), true);
 const update = condition("python-image-updates.yml", "update");
 assert.equal(permitted(update, { event_name: "schedule" }), true);
 assert.equal(permitted(update, { event_name: "workflow_dispatch", actor: "contributor" }), false);
