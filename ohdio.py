@@ -47,18 +47,18 @@ class Episode:
 def episodes(html: str, show_id: str) -> list[Episode]:
     marker = re.search(r"window\._rcState_\s*=\s*", html)
     if marker is None:
-        raise ValueError(f"{show_id}: état OHdio absent")
+        raise ValueError("état OHdio absent")
     state, _ = json.JSONDecoder().raw_decode(html, marker.end())
     for page in state["pages"]["pages"].values():
         data = page["data"]
         if data.get("typename") == "ProgramPage" and str(data["program"]["globalId"]["id"]) == show_id:
             break
     else:
-        raise ValueError(f"{show_id}: page d'émission OHdio introuvable")
+        raise ValueError("page d'émission OHdio introuvable")
 
     show_title = plain(data["program"]["title"])
     if not show_title:
-        raise ValueError(f"{show_id}: nom d'émission OHdio absent")
+        raise ValueError("nom d'émission OHdio absent")
     result = []
     for item in data["episodes"]:
         episode_id = str(item["globalId"]["id"])
@@ -66,9 +66,9 @@ def episodes(html: str, show_id: str) -> list[Episode]:
         last = datetime.fromisoformat(item["broadcastedLastTimeAt"] or item["broadcastedFirstTimeAt"])
         media = tuple(dict.fromkeys(str(mid) for mid in item["mediaIds"] if mid))
         if not re.fullmatch(r"[0-9]+", episode_id) or any(not re.fullmatch(r"[0-9]+", mid) for mid in media):
-            raise ValueError(f"{show_id}: identifiant d'épisode ou de média invalide")
+            raise ValueError("identifiant d'épisode ou de média invalide")
         if aired.tzinfo is None or last.tzinfo is None:
-            raise ValueError(f"{show_id}: horaire OHdio sans fuseau")
+            raise ValueError("horaire OHdio sans fuseau")
         result.append(Episode(episode_id, plain(item["title"]), plain(item["summary"]), aired,
                               last, item["isBroadcastedReplay"], media, show_title))
     return result

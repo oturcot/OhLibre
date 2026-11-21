@@ -14,6 +14,9 @@ docker compose up -d
 docker compose logs -f ohdio
 ```
 
+Les journaux indiquent le nom de l'émission. Pour un balado sans horaire connu,
+ce nom peut être inconnu jusqu'à la première récupération d'épisodes.
+
 Le dossier par défaut est `./podcasts`. Conserve son sous-dossier caché
 `.ohdio` : il permet la déduplication et la reprise.
 
