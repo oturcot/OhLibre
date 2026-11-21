@@ -2,6 +2,7 @@ const assert = require("node:assert/strict");
 const fs = require("node:fs");
 const path = require("node:path");
 const vm = require("node:vm");
+const { bootstrapFiles, marker } = require("./promote-dependencies.js");
 
 const workflow = fs.readFileSync(path.join(__dirname, "../workflows/report-ci-status.yml"), "utf8");
 const match = workflow.match(/      - name: Merge tested dependencies\n[\s\S]*?          script: \|\n((?:            .*\n)+)/);
@@ -60,6 +61,16 @@ module.exports = (async () => {
     base: { ref: "stable" }, labels: [{ name: "dependencies" }],
   };
   assert.deepEqual((await exercise({ pr: promotion, behind: 1 })).map(c => c[0]), ["update"]);
+  assert.equal((await exercise({ pr: promotion, files: [
+    { filename: ".github/scripts/publish-dockerhub.sh", status: "added" },
+    { filename: "docker-compose.yml", status: "modified" },
+  ] }))[0][0], "merge");
+  assert.equal((await exercise({ pr: promotion, files: [...bootstrapFiles, marker]
+    .map(filename => ({ filename, status: "modified" })) }))[0][0], "merge");
+  await assert.rejects(exercise({ pr: promotion, files: [
+    { filename: ".github/scripts/unexpected.sh", status: "added" },
+  ] }), /Unexpected dependency changes/);
+  assert.deepEqual(await exercise({ pr: { ...promotion, user: { login: "contributor" } } }), []);
   assert.deepEqual(await exercise({ pr: { user: { login: "contributor" } } }), []);
   await assert.rejects(exercise({ files: [{ filename: "downloader.py", status: "modified" }] }), /Unexpected dependency changes/);
   await assert.rejects(exercise({ jobs: [] }), /Required job did not pass/);

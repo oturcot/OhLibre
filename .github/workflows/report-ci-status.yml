@@ -85,17 +85,26 @@ jobs:
             const pr = prs.find(p => p.state === "open" && p.head.sha === run.head_sha &&
               p.head.ref === run.head_branch && p.head.repo?.full_name === `${owner}/${repo}` &&
               ((p.base.ref === "main" && (p.user.login === "dependabot[bot]" ||
-                p.head.ref === "automation/update-python-image")) ||
+                (p.user.login === owner && p.head.ref === "automation/update-python-image"))) ||
                (p.base.ref === "stable" && p.head.ref === "automation/promote-dependency-release" &&
-                p.labels.some(l => l.name === "dependencies"))));
+                p.user.login === owner && p.labels.some(l => l.name === "dependencies"))));
             if (!pr) return;
             const files = await github.paginate(github.rest.pulls.listFiles, {
               owner, repo, pull_number: pr.number, per_page: 100
             });
+            const stableFiles = new Set([
+              "docker-compose.yml", ".github/stable-dockerhub-ready",
+              ...["image-archives.sh", "local-compose.sh", "registry-compose.sh", "release-version.sh",
+                "publish-dockerhub.sh", "stamp-image-version.sh", "test-ci-authorization.js",
+                "test-dependency-merge.js", "test-image-archives.sh", "test-publish-dockerhub.sh",
+                "test-release-version.sh", "promote-dependencies.js", "test-promote-dependencies.js"]
+                .map(name => `.github/scripts/${name}`)
+            ]);
             const allowed = name => pr.head.ref === "automation/update-python-image"
               ? name === ".github/python-image-digest"
               : name === "Dockerfile" || name === ".github/python-image-digest" ||
-                name.startsWith(".github/workflows/");
+                name.startsWith(".github/workflows/") ||
+                (pr.base.ref === "stable" && stableFiles.has(name));
             if (!files.length || files.some(f => !allowed(f.filename) ||
               !["added", "modified", "removed"].includes(f.status)))
               throw new Error("Unexpected dependency changes; refusing to merge.");
