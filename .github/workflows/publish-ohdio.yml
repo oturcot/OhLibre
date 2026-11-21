@@ -134,7 +134,7 @@ jobs:
           path: .workflow-code
           persist-credentials: false
       - uses: dcarbone/install-jq-action@v4.0.1
-      - uses: docker/setup-buildx-action@v3
+      - uses: docker/setup-buildx-action@v4
       - name: Validate the archive source
         env:
           SOURCE: ${{ inputs.archive_source }}
